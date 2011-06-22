@@ -144,12 +144,12 @@ def fetch(repo, pullreq):
     print
     
     pr = get_pull_request_info(repo, pullreq)
-
     local  = 'pull-request-%s' % pullreq
+    repo_url = pr['head']['repository']['url'].replace('https', 'http')
 
-    print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref'])
+    print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
 
-    ret = os.system('git fetch %s %s:%s' % (pr['head']['repository']['url'], pr['head']['ref'], local))
+    ret = os.system('git fetch %s %s:%s' % (repo_url, pr['head']['ref'], local))
     if ret != 0:
         raise UserWarning("Fetch failed")
     
@@ -166,9 +166,10 @@ def update(repo):
     
     pr = get_pull_request_info(repo, pullreq)
     local = 'pull-request-%s' % pullreq
+    repo_url = pr['head']['repository']['url'].replace('https', 'http')
     
-    print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref'])
-    ret = os.system('git pull %s %s' % (pr['head']['repository']['url'], pr['head']['ref']))
+    print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
+    ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
     if ret != 0:
         raise UserWarning("Pull failed, resolve conflicts")
     
