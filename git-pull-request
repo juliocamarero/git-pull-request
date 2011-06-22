@@ -69,17 +69,17 @@ def main():
         remote = 'origin'
 
     # get repo name from git config:
-    if(repo == ''):
+    if repo == '':
         repo = os.popen('git config github.repo').read().strip()
 
     # get repo name from origin
-    if(repo == '' or remote != None):
+    if repo == '' or remote != None:
         origin = os.popen('git remote -v').read()
         m = re.search("^%s.*?github\.com.*?[:/]([^/]+/[^/]+)\.git\s*\(fetch\)$" % remote, origin,re.MULTILINE)
         if(m != None and m.group(1) != ''):
             repo = m.group(1)
 
-    if(repo == ''):
+    if repo == '':
         print color_text("Failed to determine github repository name",'red',True)
         print "The repository is usually automatically detected from your remote origin."
         print "If your origin doesn't point to github, you can specify the repository on"
@@ -89,16 +89,21 @@ def main():
         sys.exit(1)
 
     # process arguments
-    if len(args):
-        ret = fetch(repo, args[0])
-    else:
-        ret = show(repo)
+    try:
+        if len(args):
+            if args[0] == "update":
+                update(repo)
+            elif args[0] == "merge":
+                merge()
+            else:
+                fetch(repo, args[0])
+        else:
+            show(repo)
+    except Exception, e:
+        print color_text(e, 'red')
 
-    sys.exit(ret)
-
-"""Nicely display info about a given pull request
-"""
 def display(pr):
+    """Nicely display info about a given pull request"""
     if(pr['mergeable']):
         conflict = ''
     else:
@@ -110,70 +115,121 @@ def display(pr):
     print "    %s" % (color_text(pr.get('html_url'),'blue'))
     print
 
-"""List open pull requests
-
-Queries the github API for open pull requests in the current repo
-"""
 def show(repo):
+    """List open pull requests
 
-    print "loading open pull requests for %s..." % (repo)
+    Queries the github API for open pull requests in the current repo
+    """
+
+    print "loading open pull requests for %s..." % repo
     print
-    url = "http://github.com/api/v2/json/pulls/%s/open" % (repo)
+    url = "http://github.com/api/v2/json/pulls/%s/open" % repo
     req = urllib2.Request(url)
     try:
       response = urllib2.urlopen(req)
     except urllib2.HTTPError, msg:
-      print "error loading pull requests for repo %s: %s" % (repo, msg)
-      exit(1)
+      raise StandardError("Error loading pull requests for repo %s: %s" % (repo, msg))
 
     data = response.read()
-    if (data == ''):
-        print "failed to speak with github."
-        return 3
+    if data == '':
+        raise StandardError("Failed to speak with github")
 
     data = json.loads(data)
     #print json.dumps(data,sort_keys=True, indent=4)
 
     for pr in data['pulls']:
         display(pr)
-    return 0
-
 
 def fetch(repo, pullreq):
-
-    print "loading pull request info for request %s..." % (pullreq)
+    """Fetches a pull request into a local branch"""
+    print "loading pull request info for request %s..." % pullreq
     print
+    
+    pr = get_pull_request_info(repo, pullreq)
+
+    local  = 'pull-request-%s' % pullreq
+
+    print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref'])
+
+    ret = os.system('git fetch %s %s:%s' % (pr['head']['repository']['url'], pr['head']['ref'], local))
+    if ret != 0:
+        raise StandardError("Fetch failed")
+    
+    ret = os.system('git checkout %s' % local)
+    if ret != 0:
+        raise StandardError("Could not switch to pull request branch")
+
+    print
+    print "switching to branch %s" % local
+    print color_text("done. examine changes and merge into master",'green')
+
+def update(repo):
+    """Merges changes from the remote branch into the local branch of the pull request"""
+    branch, pullreq = get_current_branch()
+    
+    pr = get_pull_request_info(repo, pullreq)
+    local = 'pull-request-%s' % pullreq
+    
+    print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref'])
+    ret = os.system('git pull %s %s' % (pr['head']['repository']['url'], pr['head']['ref']))
+    if ret != 0:
+        raise StandardError("Pull failed, resolve conflicts")
+    
+    print
+    print color_text("done", 'green')
+
+def merge():
+    """Merges changes from the local pull request branch into master and deletes the pull request branch"""
+    branch, pullreq = get_current_branch()
+    
+    print "Merging current branch with master"
+    ret = os.system('git checkout master')
+    if ret != 0:
+        raise StandardError("Could not checkout master")
+    
+    ret = os.system('git merge %s' % branch)
+    if ret != 0:
+        raise StandardError("Merge with master failed. Resolve conflicts, switch back into the pull request branch, and merge again")
+    
+    print "Deleting pull request branch"
+    ret = os.system('git branch -D %s' % branch)
+    if ret != 0:
+        raise StandardError("Could not delete branch")
+    
+    print
+    print color_text("done", 'green')
+
+def get_pull_request_info(repo, pullreq):
     url = "http://github.com/api/v2/json/pulls/%s/%s" % (repo, pullreq)
     req = urllib2.Request(url)
-    response = urllib2.urlopen(req)
+    try:
+      response = urllib2.urlopen(req)
+    except urllib2.HTTPError, msg:
+      raise StandardError("Error loading info on pull request %s from repo %s: %s" % (pullreq, repo, msg))
+    
     data = response.read()
     if (data == ''):
-        print "failed to speak with github."
-        return 3
+        raise StandardError("Failed to speak with github")
 
     data = json.loads(data)
     pr = data['pull']
     display(pr)
 
-    local  = 'pull-request-%s' % (pullreq)
+def get_current_branch():
+    branch = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
+    
+    if branch[0:13] != 'pull-request-':
+        raise StandardError("Invalid branch: not a pull request")
+    
+    pullreq = int(branch[13:])
+    
+    return (branch, pullreq)
 
-    print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref']);
-
-    ret = os.system('git fetch %s %s:+%s' % (pr['head']['repository']['url'], pr['head']['ref'], local));
-    ret = os.system('git checkout %s' % (local))
-
-    print
-    print "switching to branch %s" % (local)
-    print color_text("done. examine changes and merge into master",'green');
-
-    return 0
-
-
-"""Return the given text in ANSI colors
-
-From http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/
-"""
 def color_text(text, color_name, bold=False):
+    """Return the given text in ANSI colors
+
+    From http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/"""
+    
     colors = (
         'black', 'red', 'green', 'yellow',
         'blue', 'magenta', 'cyan', 'white'
