@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 """git pull-request
 
@@ -156,24 +156,15 @@ def fetch(repo, pullreq):
     display(pr)
 
     local  = 'pull-request-%s' % (pullreq)
-    branch = os.popen("git branch|grep '^*'|awk '{print $2}'").read().strip();
-    if(branch != pr['base']['ref'] and branch != local):
-        print color_text("The pull request is based on branch '%s' but you're on '%s' currently" % \
-            (pr['base']['ref'], branch),'red',True)
-        return 4
-
-    ret = os.system('git branch %s' % (local));
-    ret = os.system('git checkout %s' % (local));
-    if(ret != 0):
-        print "Failed to create/switch branch"
-        return 5
 
     print "pulling from %s (%s)" % (pr['head']['repository']['url'], pr['head']['ref']);
 
-    ret = os.system('git pull %s %s' % (pr['head']['repository']['url'], pr['head']['ref']));
+    ret = os.system('git fetch %s %s:+%s' % (pr['head']['repository']['url'], pr['head']['ref'], local));
+    ret = os.system('git checkout %s' % (local))
 
     print
-    print color_text("done. examine changes and merge into master if good",'green');
+    print "switching to branch %s" % (local)
+    print color_text("done. examine changes and merge into master",'green');
 
     return 0
 
