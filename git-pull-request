@@ -238,7 +238,7 @@ def color_text(text, color_name, bold=False):
         return text
 
     if color_name in colors:
-        return '\033[{0};{1}m{2}\033[0m'.format(
+        return u"\033[{0};{1}m{2}\033[0m".format(
             int(bold),
             colors.index(color_name) + 30,
             text)
