@@ -97,7 +97,10 @@ def main():
             elif args[0] == "merge":
                 merge()
             elif args[0] == "open":
-                open(repo, args[1])
+                if len(args) >= 2:
+                    open(repo, args[1])
+                else:
+                    open(repo)
             else:
                 fetch(repo, args[0])
         else:
@@ -115,8 +118,11 @@ def display(pr):
 
     print
 
-def open(repo, pullreq):
-    """Open a pull request"""
+def open(repo, pullreq=None):
+    """Open a pull request in the browser"""
+
+    if pullreq == None:
+        branch, pullreq = get_current_branch()
 
     pr = get_pull_request_info(repo, pullreq)
 
