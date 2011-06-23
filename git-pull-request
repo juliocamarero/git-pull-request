@@ -120,8 +120,7 @@ def open(repo, pullreq):
 
     pr = get_pull_request_info(repo, pullreq)
 
-    print "Opening pull request %s " % pr.get('number')
-    os.system('open /Applications/Safari.app %s' % (pr.get('html_url')))
+    os.system('open %s' % (pr.get('html_url')))
 
 def show(repo):
     """List open pull requests
