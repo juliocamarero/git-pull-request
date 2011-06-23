@@ -96,6 +96,8 @@ def main():
                 update(repo)
             elif args[0] == "merge":
                 merge()
+            elif args[0] == "open":
+                open(repo, args[1])
             else:
                 fetch(repo, args[0])
         else:
@@ -112,6 +114,14 @@ def display(pr):
         print fill(pr.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
 
     print
+
+def open(repo, pullreq):
+    """Open a pull request"""
+
+    pr = get_pull_request_info(repo, pullreq)
+
+    print "Opening pull request %s " % pr.get('number')
+    os.system('open /Applications/Safari.app %s' % (pr.get('html_url')))
 
 def show(repo):
     """List open pull requests
