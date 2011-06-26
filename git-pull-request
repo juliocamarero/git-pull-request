@@ -38,6 +38,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 import sys
+import base64
 import getopt
 import json
 import urllib2
@@ -91,6 +92,11 @@ def main():
 
     # process arguments
     try:
+        global user 
+        global token
+        user = "%s/token" % os.popen('git config github.user').read().strip()
+        token = os.popen('git config github.token').read().strip()
+
         if len(args):
             if args[0] == "update":
                 update(repo)
@@ -136,8 +142,12 @@ def show(repo):
 
     print "loading open pull requests for %s..." % repo
     print
+
     url = "http://github.com/api/v2/json/pulls/%s/open" % repo
     req = urllib2.Request(url)
+
+    authorize_request(req)
+
     try:
       response = urllib2.urlopen(req)
     except urllib2.HTTPError, msg:
@@ -215,6 +225,9 @@ def merge():
 def get_pull_request_info(repo, pullreq):
     url = "http://github.com/api/v2/json/pulls/%s/%s" % (repo, pullreq)
     req = urllib2.Request(url)
+
+    authorize_request(req)
+
     try:
       response = urllib2.urlopen(req)
     except urllib2.HTTPError, msg:
@@ -229,6 +242,11 @@ def get_pull_request_info(repo, pullreq):
     display(pr)
     
     return pr
+
+def authorize_request(req):
+    """Add the Authorize header to the passed request"""
+    base64string = base64.encodestring('%s:%s' % (user, token)).replace('\n', '')
+    req.add_header("Authorization", "Basic %s" % base64string)
 
 def get_current_branch():
     branch = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
