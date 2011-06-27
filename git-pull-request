@@ -130,7 +130,7 @@ def open(repo, pullreq=None):
     if pullreq == None:
         branch, pullreq = get_current_branch()
 
-    pr = get_pull_request_info(repo, pullreq)
+    repo_url, pr = get_pull_request_info(repo, pullreq)
 
     os.system('open %s' % (pr.get('html_url')))
 
@@ -168,13 +168,8 @@ def fetch(repo, pullreq):
     print "loading pull request info for request %s..." % pullreq
     print
 
-    pr = get_pull_request_info(repo, pullreq)
+    repo_url, pr = get_pull_request_info(repo, pullreq)
     local  = 'pull-request-%s' % pullreq
-    repo_url = pr['head']['repository']['url'].replace('https', 'git')
-    private_repo = pr['head']['repository']['private']
-
-    if private_repo:
-        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
 
@@ -193,13 +188,8 @@ def update(repo):
     """Merges changes from the remote branch into the local branch of the pull request"""
     branch, pullreq = get_current_branch()
 
-    pr = get_pull_request_info(repo, pullreq)
+    repo_url, pr = get_pull_request_info(repo, pullreq)
     local = 'pull-request-%s' % pullreq
-    repo_url = pr['head']['repository']['url'].replace('https', 'git')
-    private_repo = pr['head']['repository']['private']
-
-    if private_repo:
-        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
     ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
@@ -249,7 +239,13 @@ def get_pull_request_info(repo, pullreq):
     pr = data['pull']
     display(pr)
 
-    return pr
+    repo_url = pr['head']['repository']['url'].replace('https', 'git')
+    private_repo = pr['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
+
+    return repo_url, pr
 
 def authorize_request(req):
     """Add the Authorize header to the passed request"""
