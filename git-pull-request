@@ -170,7 +170,11 @@ def fetch(repo, pullreq):
 
     pr = get_pull_request_info(repo, pullreq)
     local  = 'pull-request-%s' % pullreq
-    repo_url = pr['head']['repository']['url']
+    repo_url = pr['head']['repository']['url'].replace('https', 'git')
+    private_repo = pr['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
 
@@ -192,6 +196,10 @@ def update(repo):
     pr = get_pull_request_info(repo, pullreq)
     local = 'pull-request-%s' % pullreq
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
+    private_repo = pr['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
     ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
