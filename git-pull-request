@@ -64,7 +64,7 @@ def main():
         if o in ("-r", "--repo"):
             if re.search('/', a):
               repo = a
-            else:  
+            else:
               remote = a
 
     if remote is None and repo == '':
@@ -77,7 +77,7 @@ def main():
     # get repo name from origin
     if repo == '' or remote != None:
         origin = os.popen('git remote -v').read()
-        m = re.search("^%s[^\n]+github\.com[:/]([^.]+)\.git[ \t]+\(fetch\)$" % remote, origin, re.MULTILINE)
+        m = re.search("^%s[^\n]+?github\.com[^\n]*?[:/]([^ \t]+)\.git[ \t]+\(fetch\)$" % remote, origin, re.MULTILINE)
         if(m != None and m.group(1) != ''):
             repo = m.group(1)
 
@@ -92,7 +92,7 @@ def main():
 
     # process arguments
     try:
-        global user 
+        global user
         global token
         user = "%s/token" % os.popen('git config github.user').read().strip()
         token = os.popen('git config github.token').read().strip()
@@ -167,7 +167,7 @@ def fetch(repo, pullreq):
     """Fetches a pull request into a local branch"""
     print "loading pull request info for request %s..." % pullreq
     print
-    
+
     pr = get_pull_request_info(repo, pullreq)
     local  = 'pull-request-%s' % pullreq
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
@@ -177,7 +177,7 @@ def fetch(repo, pullreq):
     ret = os.system('git fetch %s %s:%s' % (repo_url, pr['head']['ref'], local))
     if ret != 0:
         raise UserWarning("Fetch failed")
-    
+
     ret = os.system('git checkout %s' % local)
     if ret != 0:
         raise UserWarning("Could not switch to pull request branch")
@@ -188,37 +188,37 @@ def fetch(repo, pullreq):
 def update(repo):
     """Merges changes from the remote branch into the local branch of the pull request"""
     branch, pullreq = get_current_branch()
-    
+
     pr = get_pull_request_info(repo, pullreq)
     local = 'pull-request-%s' % pullreq
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
-    
+
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
     ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
     if ret != 0:
         raise UserWarning("Pull failed, resolve conflicts")
-    
+
     print
     print color_text("done", 'green')
 
 def merge():
     """Merges changes from the local pull request branch into master and deletes the pull request branch"""
     branch, pullreq = get_current_branch()
-    
+
     print "Merging current branch with master"
     ret = os.system('git checkout master')
     if ret != 0:
         raise UserWarning("Could not checkout master")
-    
+
     ret = os.system('git merge %s' % branch)
     if ret != 0:
         raise UserWarning("Merge with master failed. Resolve conflicts, switch back into the pull request branch, and merge again")
-    
+
     print "Deleting pull request branch"
     ret = os.system('git branch -D %s' % branch)
     if ret != 0:
         raise UserWarning("Could not delete branch")
-    
+
     print
     print color_text("done", 'green')
 
@@ -232,7 +232,7 @@ def get_pull_request_info(repo, pullreq):
       response = urllib2.urlopen(req)
     except urllib2.HTTPError, msg:
       raise UserWarning("Error loading info on pull request %s from repo %s: %s" % (pullreq, repo, msg))
-    
+
     data = response.read()
     if (data == ''):
         raise UserWarning("Failed to speak with github")
@@ -240,7 +240,7 @@ def get_pull_request_info(repo, pullreq):
     data = json.loads(data)
     pr = data['pull']
     display(pr)
-    
+
     return pr
 
 def authorize_request(req):
@@ -250,19 +250,19 @@ def authorize_request(req):
 
 def get_current_branch():
     branch = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
-    
+
     if branch[0:13] != 'pull-request-':
         raise UserWarning("Invalid branch: not a pull request")
-    
+
     pullreq = int(branch[13:])
-    
+
     return (branch, pullreq)
 
 def color_text(text, color_name, bold=False):
     """Return the given text in ANSI colors
 
     From http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/"""
-    
+
     colors = (
         'black', 'red', 'green', 'yellow',
         'blue', 'magenta', 'cyan', 'white'
