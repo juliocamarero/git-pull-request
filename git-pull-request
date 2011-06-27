@@ -170,7 +170,7 @@ def fetch(repo, pullreq):
 
     pr = get_pull_request_info(repo, pullreq)
     local  = 'pull-request-%s' % pullreq
-    repo_url = pr['head']['repository']['url'].replace('https', 'git')
+    repo_url = pr['head']['repository']['url']
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
 
