@@ -318,7 +318,7 @@ def color_text(text, color_name, bold=False):
     """Return the given text in ANSI colors
 
     From http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/"""
-    
+
     colors = (
         'black', 'red', 'green', 'yellow',
         'blue', 'magenta', 'cyan', 'white'
