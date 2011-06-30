@@ -122,7 +122,7 @@ def main():
 
 def display(pr):
     """Nicely display info about a given pull request"""
-    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), 'magenta', True), color_text(pr.get('title'), 'green', True), color_text(pr['user'].get('name'), 'cyan'), pr['user'].get('login'))
+    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), 'magenta', True), color_text(pr.get('title'), 'red'), color_text(pr['user'].get('name'), 'blue'), pr['user'].get('login'))
     print "    %s" % color_text(pr.get('html_url'), 'cyan')
     if pr.get('body').strip():
         print fill(pr.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
