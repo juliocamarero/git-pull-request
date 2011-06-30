@@ -78,6 +78,7 @@ def main():
     if repo == '' or remote != None:
         origin = os.popen('git remote -v').read()
         m = re.search("^%s[^\n]+?github\.com[^\n]*?[:/]([^ \t]+)\.git[ \t]+\(fetch\)$" % remote, origin, re.MULTILINE)
+
         if(m != None and m.group(1) != ''):
             repo = m.group(1)
 
@@ -92,10 +93,12 @@ def main():
 
     # process arguments
     try:
-        global user
-        global token
-        user = "%s/token" % os.popen('git config github.user').read().strip()
-        token = os.popen('git config github.token').read().strip()
+        global username
+        global auth_user
+        global auth_token
+        username = os.popen('git config github.user').read().strip()
+        auth_user = "%s/token" % username
+        auth_token = os.popen('git config github.token').read().strip()
 
         if len(args):
             if args[0] == "update":
@@ -107,6 +110,8 @@ def main():
                     open(repo, args[1])
                 else:
                     open(repo)
+            elif args[0] == "info":
+                info()
             else:
                 fetch(repo, args[0])
         else:
@@ -117,7 +122,7 @@ def main():
 
 def display(pr):
     """Nicely display info about a given pull request"""
-    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), 'magenta', True), color_text(pr.get('title'), 'red'), color_text(pr['user'].get('name'), 'blue'), pr['user'].get('login'))
+    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), 'magenta', True), color_text(pr.get('title'), 'green', True), color_text(pr['user'].get('name'), 'cyan'), pr['user'].get('login'))
     print "    %s" % color_text(pr.get('html_url'), 'cyan')
     if pr.get('body').strip():
         print fill(pr.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
@@ -143,6 +148,14 @@ def show(repo):
     print "loading open pull requests for %s..." % repo
     print
 
+    data = get_repo_pull_requests(repo)
+    #print json.dumps(data,sort_keys=True, indent=4)
+
+    for pr in data['pulls']:
+        display(pr)
+
+def get_repo_pull_requests(repo):
+    """returns the pull requests object for a given repo"""
     url = "http://github.com/api/v2/json/pulls/%s/open" % repo
     req = urllib2.Request(url)
 
@@ -158,10 +171,8 @@ def show(repo):
         raise UserWarning("Failed to speak with github")
 
     data = json.loads(data)
-    #print json.dumps(data,sort_keys=True, indent=4)
 
-    for pr in data['pulls']:
-        display(pr)
+    return data
 
 def fetch(repo, pullreq):
     """Fetches a pull request into a local branch"""
@@ -170,6 +181,10 @@ def fetch(repo, pullreq):
 
     repo_url, pr = get_pull_request_info(repo, pullreq)
     local  = 'pull-request-%s' % pullreq
+    private_repo = pr['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
 
@@ -190,6 +205,10 @@ def update(repo):
 
     repo_url, pr = get_pull_request_info(repo, pullreq)
     local = 'pull-request-%s' % pullreq
+    private_repo = pr['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
     print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
     ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
@@ -252,6 +271,11 @@ def authorize_request(req):
     base64string = base64.encodestring('%s:%s' % (user, token)).replace('\n', '')
     req.add_header("Authorization", "Basic %s" % base64string)
 
+def authorize_request(req):
+    """Add the Authorize header to the passed request"""
+    base64string = base64.encodestring('%s:%s' % (auth_user, auth_token)).replace('\n', '')
+    req.add_header("Authorization", "Basic %s" % base64string)
+
 def get_current_branch():
     branch = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
 
@@ -261,6 +285,44 @@ def get_current_branch():
     pullreq = int(branch[13:])
 
     return (branch, pullreq)
+
+def info():
+    url = "http://github.com/api/v2/json/repos/show/%s" % username
+    req = urllib2.Request(url)
+
+    authorize_request(req)
+
+    try:
+      response = urllib2.urlopen(req)
+    except urllib2.HTTPError, msg:
+      raise UserWarning("Error loading pull request info")
+
+    data = response.read()
+    if (data == ''):
+        raise UserWarning("Failed to speak with github")
+
+    data = json.loads(data)
+    repos = data['repositories']
+
+    print
+
+    total = 0
+    issue_list = {}
+    for pr in repos:
+        issue_count = pr['open_issues']
+
+        if (issue_count > 0):
+            base_name = pr['name']
+            repo = "%s/%s" % (pr['owner'], base_name)
+            data = get_repo_pull_requests(repo)
+
+            print "  %s: %s" % (color_text(base_name, 'white'), color_text(issue_count, 'yellow'))
+
+            for pr in data['pulls']:
+                total += 1
+
+    print "-"
+    print "%s: %s" % (color_text("Total pull requests", 'green', True), color_text(total, 'magenta', True))
 
 def color_text(text, color_name, bold=False):
     """Return the given text in ANSI colors
