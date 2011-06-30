@@ -192,10 +192,6 @@ def fetch(repo, pullreq):
     if ret != 0:
         raise UserWarning("Fetch failed")
 
-    ret = os.system('git checkout %s' % local)
-    if ret != 0:
-        raise UserWarning("Could not switch to pull request branch")
-
     print
     print color_text("done. examine changes and merge into master",'green')
 
