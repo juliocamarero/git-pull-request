@@ -312,7 +312,7 @@ def info():
             repo = "%s/%s" % (pr['owner'], base_name)
             data = get_repo_pull_requests(repo)
 
-            print "  %s: %s" % (color_text(base_name, 'white'), color_text(issue_count, 'yellow'))
+            print "  %s: %s" % (base_name, color_text(issue_count, 'magenta'))
 
             for pr in data['pulls']:
                 total += 1
