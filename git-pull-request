@@ -104,6 +104,8 @@ def main():
                 update(repo)
             elif args[0] == "merge":
                 merge()
+            elif args[0] == "fetch-all":
+                fetch_all(repo)
             elif args[0] == "open":
                 if len(args) >= 2:
                     open(repo, args[1])
@@ -127,6 +129,10 @@ def display(pr):
         print fill(pr.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
 
     print
+
+def display_minimal(pr):
+    """Nicely display a minimum of info about a given pull request"""
+    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), 'magenta', True), color_text(pr.get('title'), 'green', True), color_text(pr['user'].get('name'), 'cyan'), pr['user'].get('login'))
 
 def open(repo, pullreq=None):
     """Open a pull request in the browser"""
@@ -178,33 +184,55 @@ def fetch(repo, pullreq):
     print "loading pull request info for request %s..." % pullreq
     print
     
-    pr = get_pull_request_info(repo, pullreq)
-    local  = 'pull-request-%s' % pullreq
+    request_info = fetch_req(repo, pullreq)
+
+    ret = os.system('git checkout %s' % request_info['branch_name'])
+    
+    print
+    print color_text("done. examine changes and merge into master",'green')
+
+def fetch_req(repo, pullreq, displayInfo=True):
+    """Fetches a pull request into a local branch"""
+
+    pr = get_pull_request_info(repo, pullreq, displayInfo)
+    branch_name  = get_branch_name(pr)
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
     private_repo = pr['head']['repository']['private']
 
     if private_repo:
         repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
 
-    print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
+    remote_branch_name = pr['head']['ref']
 
-    ret = os.system('git fetch %s %s:%s' % (repo_url, pr['head']['ref'], local))
+    request_info = {
+        'branch_name': branch_name,
+        'repo_url': repo_url,
+        'private_repo': private_repo,
+        'remote_branch_name': remote_branch_name
+    }
+
+    ret = os.system('git fetch %s %s:%s' % (repo_url, remote_branch_name, branch_name))
     if ret != 0:
         raise UserWarning("Fetch failed")
-    
-    ret = os.system('git checkout %s' % local)
-    if ret != 0:
-        raise UserWarning("Could not switch to pull request branch")
 
     print
-    print color_text("done. examine changes and merge into master",'green')
+    return request_info
+
+def fetch_all(repo):
+    reqs = get_pull_request_info(repo)
+    for pr in reqs:
+        request_info = fetch_req(repo, pr['number'], False)
+
+        display_minimal(pr)
+        print
+    return
 
 def update(repo):
     """Merges changes from the remote branch into the local branch of the pull request"""
     branch, pullreq = get_current_branch()
     
     pr = get_pull_request_info(repo, pullreq)
-    local = 'pull-request-%s' % pullreq
+    branch_name = get_branch_name(pr)
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
     private_repo = pr['head']['repository']['private']
 
@@ -236,11 +264,11 @@ def merge():
     ret = os.system('git branch -D %s' % branch)
     if ret != 0:
         raise UserWarning("Could not delete branch")
-    
+
     print
     print color_text("done", 'green')
 
-def get_pull_request_info(repo, pullreq):
+def get_pull_request_info(repo, pullreq='', displayInfo=True):
     url = "http://github.com/api/v2/json/pulls/%s/%s" % (repo, pullreq)
     req = urllib2.Request(url)
 
@@ -256,9 +284,15 @@ def get_pull_request_info(repo, pullreq):
         raise UserWarning("Failed to speak with github")
 
     data = json.loads(data)
-    pr = data['pull']
-    display(pr)
-    
+
+    if pullreq:
+        pr = data['pull']
+
+        if displayInfo == True:
+            display(pr)
+    else:
+        pr = data['pulls']
+
     return pr
 
 def authorize_request(req):
@@ -313,6 +347,14 @@ def info():
 
     print "-"
     print "%s: %s" % (color_text("Total pull requests", 'green', True), color_text(total, 'magenta', True))
+
+def get_branch_name(pr):
+    ref = pr['head']['ref']
+
+    request_id = pr['number']
+    branch_name  = 'pull-request-%s' % request_id
+
+    return branch_name
 
 def color_text(text, color_name, bold=False):
     """Return the given text in ANSI colors
