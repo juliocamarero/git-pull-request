@@ -306,7 +306,12 @@ def get_current_branch():
     if branch[0:13] != 'pull-request-':
         raise UserWarning("Invalid branch: not a pull request")
     
-    pullreq = int(branch[13:])
+    m = re.search("^pull-request-(\d+)-?", branch)
+
+    if(m != None and m.group(1) != ''):
+        pullreq = m.group(1)
+    else:
+        pullreq = int(branch[13:])
     
     return (branch, pullreq)
 
@@ -352,7 +357,13 @@ def get_branch_name(pr):
     ref = pr['head']['ref']
 
     request_id = pr['number']
+
+    m = re.search("^([A-Z]{3,}-\d+)", ref)
+
     branch_name  = 'pull-request-%s' % request_id
+
+    if(m != None and m.group(1) != ''):
+        branch_name = '%s-%s' % (branch_name, m.group(1))
 
     return branch_name
 
