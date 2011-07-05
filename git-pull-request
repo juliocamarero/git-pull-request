@@ -347,8 +347,7 @@ def info():
 
             print "  %s: %s" % (color_text(base_name, 'white'), color_text(issue_count, 'yellow'))
 
-            for pr in data['pulls']:
-                total += 1
+            total += issue_count
 
     print "-"
     print "%s: %s" % (color_text("Total pull requests", 'green', True), color_text(total, 'magenta', True))
