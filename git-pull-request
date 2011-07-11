@@ -67,9 +67,11 @@ def main():
         'display-info-total-count': 'magenta'
     }
 
-    for k in colors:
-        color = os.popen('git config git-pull-request.color-%s' % k).read().strip() or colors[k]
-        colors[k] = color
+    all_config = os.popen('git config -l').read().strip()
+    color_matches = re.findall("^git-pull-request\.color-([^=]+)=(.*)$", all_config, re.MULTILINE)
+
+    for k in color_matches:
+        colors[k[0]] = k[1]
 
     # parse command line options
     try:
