@@ -6,18 +6,21 @@ Automatically check out github pull requests into their own branch.
 
 Usage:
 
-    git pull-request <OPTIONS> [<pull request number>]
+    git pull-request [<options>] <command> [<pull request number>]
 
 Options:
 
     -h, --help
-        Display this message and exit
+        Display this message
 
     -r <repo>, --repo <repo>
         Use this github repo instead of the 'remote origin' or 'github.repo'
-        git config settings. Needs to be in "user/repository" form
+        git config settings. This can be used to specify either a remote name
+        or the full reposity name (user/repo).
 
-Copyright (C) 2011 by Andreas Gohr <andi@splitbrain.org>
+Copyright (C) 2011 Connor McKay <connor.mckay@liferay.com>
+
+Original Version Copyright (C) 2011 Andreas Gohr <andi@splitbrain.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,465 +40,86 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-import sys
+
 import base64
 import getopt
 import json
-import urllib
-import urllib2
 import os
 import re
+import sys
+import urllib
+import urllib2
+
 from textwrap import fill
 
-def main():
-    repo, remote = '', None
-
-    pull_to = ''
-
-    global colors
-
-    colors = {
-        'success': 'green',
-        'error': 'red',
-        'display-title-number': 'magenta',
-        'display-title-text': 'red',
-        'display-title-user': 'blue',
-        'display-title-url': 'cyan',
-        'display-info-repo-title': 'black',
-        'display-info-repo-count': 'magenta',
-        'display-info-total-title': 'green',
-        'display-info-total-count': 'magenta'
-    }
-
-    all_config = os.popen('git config -l').read().strip()
-    color_matches = re.findall("^git-pull-request\.color-([^=]+)=(.*)$", all_config, re.MULTILINE)
-
-    for k in color_matches:
-        colors[k[0]] = k[1]
-
-    # parse command line options
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "hr:u:", ["help","repo:","reviewer="])
-    except getopt.error, msg:
-        print msg
-        print "for help use --help"
-        sys.exit(1)
-    # process options
-    for o, a in opts:
-        if o in ("-h", "--help"):
-            print __doc__
-            sys.exit(0)
-        if o in ("-r", "--repo"):
-            if re.search('/', a):
-              repo = a
-            else:
-              remote = a
-        if o in ("-u", "--reviewer"):
-            pull_to = a
-
-    if remote is None and repo == '':
-        remote = 'origin'
-
-    # get repo name from git config:
-    if repo == '':
-        repo = os.popen('git config github.repo').read().strip()
-
-    # get repo name from origin
-    if repo == '' or remote != None:
-        origin = os.popen('git remote -v').read()
-        m = re.search("^%s[^\n]+?github\.com[^\n]*?[:/]([^ \t]+)\.git[ \t]+\(fetch\)$" % remote, origin, re.MULTILINE)
-
-        if(m != None and m.group(1) != ''):
-            repo = m.group(1)
-
-
-    if repo == '':
-        print color_text("Failed to determine github repository name", colors['error'], True)
-        print "The repository is usually automatically detected from your remote origin."
-        print "If your origin doesn't point to github, you can specify the repository on"
-        print "the command line using the -r parameter, by specifying either a remote or"
-        print "the full repository name (user/repo), or configure it using"
-        print "git config github.repo <user>/<repository>"
-        sys.exit(1)
-
-    # process arguments
-    try:
-        global username
-        global reviewer
-        global auth_user
-        global auth_token
-        username = os.popen('git config github.user').read().strip()
-
-        if (pull_to):
-            reviewer = pull_to
-        else:
-            reviewer = os.popen('git config github.reviewer').read().strip()
-
-        auth_user = "%s/token" % username
-        auth_token = os.popen('git config github.token').read().strip()
-
-        if len(args):
-            if args[0] == "update":
-                update(repo)
-            elif args[0] == "merge":
-                merge()
-            elif args[0] == "fetch-all":
-                fetch_all(repo)
-            elif args[0] == "open":
-                if len(args) >= 2:
-                    open(repo, args[1])
-                else:
-                    open(repo)
-            elif args[0] == "info":
-                info()
-            elif args[0] == "submit":
-                pull_body = ''
-                pull_title = ''
-
-                if (len(args) >= 2):
-                    pull_body = args[1]
-
-                if (len(args) >= 3):
-                    pull_title = args[2]
-
-                submit(repo, pull_body, pull_title)
-            else:
-                fetch(repo, args[0])
-        else:
-            show(repo)
-    except UserWarning, e:
-        print color_text(e, colors['error'])
-        sys.exit(1)
-
-def submit(repo, pull_body='', pull_title=''):
-    """Push the current branch and create a pull request to your github reviewer (or upstream)"""
-
-    pull_to = reviewer
-
-    if (pull_to == ''):
-        remotes = os.popen('git remote -v').read()
-        m = re.search("^upstream.*?github\.com.*?[:/]([^/]+)", remotes,re.MULTILINE)
-
-        if(m != None and m.group(1) != ''):
-            pull_to = m.group(1)
-
-
-    if (pull_to == None or pull_to == ''):
-        raise UserWarning("Could not determine a repo to submit this pull request to")
-
-    branch_name = get_current_branch()[0]
-    ret = os.system('git push origin %s' % branch_name)
-    
-    if ret != 0:
-        raise UserWarning("Could not push this branch to your origin")
-
-    url = "http://github.com/api/v2/json/pulls/%s/liferay-portal" % pull_to
-
-    # pull[base] - A String of the branch or commit SHA that you want your changes to be pulled to.
-    # pull[head] - A String of the branch or commit SHA of your changes. Typically this will be a branch. If the branch is in a fork of the original repository, specify the username first: "my-user:some-branch".
-    # pull[title] - The String title of the Pull Request (and the related Issue).
-    # pull[body] - The String body of the Pull Request.
-
-    pull_base = 'master'
-
-    if (pull_title == ''):
-        pull_title = extract_ticket_id(branch_name)
-
-        if (pull_title == ''):
-            pull_title = branch_name
-
-    values = {
-        'pull[base]' : pull_base,
-        'pull[head]' : ('%s:%s' % (username, branch_name)),
-        'pull[title]' : pull_title,
-        'pull[body]' : pull_body
-    }
-
-    data = urllib.urlencode(values)
-    req = urllib2.Request(url, data)
-
-    authorize_request(req)
-
-    try:
-      response = urllib2.urlopen(req)
-    except urllib2.HTTPError, msg:
-      raise UserWarning("Error submitting pull requests for repo %s:%s: %s" % (pull_to, pull_base, msg))
-
-    data = response.read()
-
-    if data == '':
-        raise UserWarning("Failed to speak with github")
-
-    data = json.loads(data)
-    # print json.dumps(data, sort_keys=True, indent=4)
-    pr = data['pull']
-
-    display(pr)
-
-    os.system('open %s' % (pr.get('html_url')))
-
-    return data
-    
-
-def display(pr):
-    """Nicely display info about a given pull request"""
-    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), colors['display-title-number'], True), color_text(pr.get('title'), colors['display-title-text'], True), color_text(pr['user'].get('name'), colors['display-title-user']), pr['user'].get('login'))
-    print "    %s" % color_text(pr.get('html_url'), colors['display-title-url'])
-    if pr.get('body').strip():
-        print fill(pr.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
-
-    print
-
-def display_minimal(pr):
-    """Nicely display a minimum of info about a given pull request"""
-    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pr.get('number'), colors['display-title-number'], True), color_text(pr.get('title'), colors['display-title-text'], True), color_text(pr['user'].get('name'), colors['display-title-user']), pr['user'].get('login'))
-
-def open(repo, pullreq=None):
-    """Open a pull request in the browser"""
-
-    if pullreq == None:
-        branch, pullreq = get_current_branch()
-
-    repo_url, pr = get_pull_request_info(repo, pullreq)
-
-    os.system('open %s' % (pr.get('html_url')))
-
-def show(repo):
-    """List open pull requests
-
-    Queries the github API for open pull requests in the current repo
-    """
-
-    print "loading open pull requests for %s..." % repo
-    print
-
-    data = get_repo_pull_requests(repo)
-    #print json.dumps(data,sort_keys=True, indent=4)
-
-    for pr in data['pulls']:
-        display(pr)
-
-def get_repo_pull_requests(repo):
-    """returns the pull requests object for a given repo"""
-    url = "http://github.com/api/v2/json/pulls/%s/open" % repo
-    req = urllib2.Request(url)
-
-    authorize_request(req)
-
-    try:
-      response = urllib2.urlopen(req)
-    except urllib2.HTTPError, msg:
-      raise UserWarning("Error loading pull requests for repo %s: %s" % (repo, msg))
-
-    data = response.read()
-    if data == '':
-        raise UserWarning("Failed to speak with github")
-
-    data = json.loads(data)
-
-    return data
-
-def fetch(repo, pullreq):
-    """Fetches a pull request into a local branch"""
-    print "loading pull request info for request %s..." % pullreq
-    print
-
-    request_info = fetch_req(repo, pullreq)
-
-    ret = os.system('git checkout %s' % request_info['branch_name'])
-
-    print
-    print color_text("done. examine changes and merge into master",colors['success'])
-
-def fetch_req(repo, pullreq, displayInfo=True):
-    """Fetches a pull request into a local branch"""
-
-    pr = get_pull_request_info(repo, pullreq, displayInfo)
-    branch_name  = get_branch_name(pr)
-    repo_url = pr['head']['repository']['url'].replace('https', 'git')
-    private_repo = pr['head']['repository']['private']
-
-    if private_repo:
-        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
-
-    remote_branch_name = pr['head']['ref']
-
-    request_info = {
-        'branch_name': branch_name,
-        'repo_url': repo_url,
-        'private_repo': private_repo,
-        'remote_branch_name': remote_branch_name
-    }
-
-    ret = os.system('git fetch %s %s:%s' % (repo_url, remote_branch_name, branch_name))
-    if ret != 0:
-        raise UserWarning("Fetch failed")
-
-    print
-    return request_info
-
-def fetch_all(repo):
-    reqs = get_pull_request_info(repo)
-    for pr in reqs:
-        request_info = fetch_req(repo, pr['number'], False)
-
-        display_minimal(pr)
-        print
-    return
-
-def update(repo):
-    """Merges changes from the remote branch into the local branch of the pull request"""
-    branch, pullreq = get_current_branch()
-
-    pr = get_pull_request_info(repo, pullreq)
-    branch_name = get_branch_name(pr)
-    repo_url = pr['head']['repository']['url'].replace('https', 'git')
-    private_repo = pr['head']['repository']['private']
-
-    if private_repo:
-        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
-
-    print "pulling from %s (%s)" % (repo_url, pr['head']['ref'])
-    ret = os.system('git pull %s %s' % (repo_url, pr['head']['ref']))
-    if ret != 0:
-        raise UserWarning("Pull failed, resolve conflicts")
-
-    print
-    print color_text("done", colors['success'])
-
-def merge():
-    """Merges changes from the local pull request branch into master and deletes the pull request branch"""
-    branch, pullreq = get_current_branch()
-
-    print "Merging current branch with master"
-    ret = os.system('git checkout master')
-    if ret != 0:
-        raise UserWarning("Could not checkout master")
-
-    ret = os.system('git merge %s' % branch)
-    if ret != 0:
-        raise UserWarning("Merge with master failed. Resolve conflicts, switch back into the pull request branch, and merge again")
-
-    print "Deleting pull request branch"
-    ret = os.system('git branch -D %s' % branch)
-    if ret != 0:
-        raise UserWarning("Could not delete branch")
-
-    print
-    print color_text("done", colors['success'])
-
-def get_pull_request_info(repo, pullreq='', displayInfo=True):
-    url = "http://github.com/api/v2/json/pulls/%s/%s" % (repo, pullreq)
-    req = urllib2.Request(url)
-
-    authorize_request(req)
-
-    try:
-      response = urllib2.urlopen(req)
-    except urllib2.HTTPError, msg:
-      raise UserWarning("Error loading info on pull request %s from repo %s: %s" % (pullreq, repo, msg))
-
-    data = response.read()
-    if (data == ''):
-        raise UserWarning("Failed to speak with github")
-
-    data = json.loads(data)
-
-    if pullreq:
-        pr = data['pull']
-
-        if displayInfo == True:
-            display(pr)
-    else:
-        pr = data['pulls']
-
-    return pr
+options = {
+    # Color Scheme
+    'color-success': 'green',
+    'color-error': 'red',
+    'color-display-title-number': 'magenta',
+    'color-display-title-text': 'red',
+    'color-display-title-user': 'blue',
+    'color-display-title-url': 'cyan',
+    'color-display-info-repo-title': 'black',
+    'color-display-info-repo-count': 'magenta',
+    'color-display-info-total-title': 'green',
+    'color-display-info-total-count': 'magenta',
+
+    # Sets a directory to be used for performing merges/rebases to prevent
+    # excessive rebuilding by IDE's
+    'work-dir': None,
+
+    # Determines whether to automatically update a fetched pull request branch
+    # by either merging master into it, or rebasing it onto master.
+    # Possible options: None, 'merge', 'rebase'
+    'fetch-auto-update': None,
+
+    # Determines whether fetch will automatically checkout the new branch
+    'fetch-auto-checkout': True,
+
+    # Determines whether to open newly submitted pull requests on github
+    'submit-open-github': True
+}
+
+#print json.dumps(data,sort_keys=True, indent=4)
 
 def authorize_request(req):
-    """Add the Authorize header to the passed request"""
-    base64string = base64.encodestring('%s:%s' % (auth_user, auth_token)).replace('\n', '')
-    req.add_header("Authorization", "Basic %s" % base64string)
+    """Add the Authorize header to the request"""
 
-def get_current_branch():
-    branch = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
+    req.add_header("Authorization", "Basic %s" % auth_string)
 
-    if branch[0:13] != 'pull-request-':
-        raise UserWarning("Invalid branch: not a pull request")
+def build_branch_name(pull_request):
+    """Returns the local branch name that a pull request should be fetched into"""
+    ref = pull_request['head']['ref']
 
-    m = re.search("^pull-request-(\d+)-?", branch)
+    request_id = pull_request['number']
 
-    if(m != None and m.group(1) != ''):
-        pullreq = m.group(1)
-    else:
-        pullreq = int(branch[13:])
-
-    return (branch, pullreq)
-
-def info():
-    url = "http://github.com/api/v2/json/repos/show/%s" % username
-    req = urllib2.Request(url)
-
-    authorize_request(req)
-
-    try:
-      response = urllib2.urlopen(req)
-    except urllib2.HTTPError, msg:
-      raise UserWarning("Error loading pull request info")
-
-    data = response.read()
-    if (data == ''):
-        raise UserWarning("Failed to speak with github")
-
-    data = json.loads(data)
-    repos = data['repositories']
-
-    print
-
-    total = 0
-    issue_list = {}
-    for pr in repos:
-        issue_count = pr['open_issues']
-
-        if (issue_count > 0):
-            base_name = pr['name']
-            repo = "%s/%s" % (pr['owner'], base_name)
-            data = get_repo_pull_requests(repo)
-
-            print "  %s: %s" % (color_text(base_name, colors['display-info-repo-title']), color_text(issue_count, colors['display-info-repo-count']))
-
-            total += issue_count
-
-    print "-"
-    print "%s: %s" % (color_text("Total pull requests", colors['display-info-total-title'], True), color_text(total, colors['display-info-total-count'], True))
-
-def get_branch_name(pr):
-    ref = pr['head']['ref']
-
-    request_id = pr['number']
-
-    m = re.search("^([A-Z]{3,}-\d+)", ref)
+    m = re.search("^[A-Z]{3,}-\d+", ref)
 
     branch_name  = 'pull-request-%s' % request_id
 
-    if(m != None and m.group(1) != ''):
-        branch_name = '%s-%s' % (branch_name, m.group(1))
+    if m != None and m.group(0) != '':
+        branch_name = '%s-%s' % (branch_name, m.group(0))
 
     return branch_name
 
-def extract_ticket_id(branch_name):
-    
-    ticket_id = ''
-    m = re.search("\b?([A-Z]{3,}-\d+)", branch_name)
+def build_pull_request_title(branch_name):
+    """Returns the default title to use for a pull request for the branch wth
+    the name"""
 
-    if(m != None and m.group(1) != ''):
-        ticket_id = m.group(1)
+    m = re.search("([A-Z]{3,}-\d+)", branch_name)
 
-    return ticket_id
+    if m is not None and m.group(1) != '':
+        return m.group(1)
 
-def color_text(text, color_name, bold=False):
-    """Return the given text in ANSI colors
+    return branch_name
 
-    From http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/"""
+def color_text(text, token, bold = False):
+    """Return the given text in ANSI colors"""
+
+    # http://travelingfrontiers.wordpress.com/2010/08/22/how-to-add-colors-to-linux-command-line-output/
+
+    color_name = options["color-%s" % token]
 
     colors = (
         'black', 'red', 'green', 'yellow',
@@ -513,6 +137,394 @@ def color_text(text, color_name, bold=False):
     else:
         return text
 
-if __name__ == "__main__":
-    main()
+def command_fetch(repo_name, pull_request_ID):
+    """Fetches a pull request into a local branch"""
 
+    print "Loading pull request info for request %s..." % pull_request_ID
+    print
+
+    pull_request = get_pull_request(repo_name, pull_request_ID)
+    branch_name = fetch_pull_request(pull_request)
+
+    display_pull_request(pull_request)
+
+    if options['fetch-auto-checkout']:
+        ret = os.system('git checkout %s' % branch_name)
+
+    print
+    print color_text("Done. Examine changes then run 'git pull-request merge' to merge changes into master", 'success')
+
+def command_fetch_all(repo_name):
+    """Fetches all pull requests into local branches"""
+
+    pull_requests = get_pull_requests(repo_name)
+    for pull_request in pull_requests:
+        fetch_pull_request(pull_request)
+        display_pull_request_minimal(pull_request)
+        print
+
+def command_help():
+    print __doc__
+
+def command_info(username):
+    url = "http://github.com/api/v2/json/repos/show/%s" % username
+    data = github_json_request(url)
+    repos = data['repositories']
+
+    print
+
+    total = 0
+    issue_list = {}
+    for pull_request_info in repos:
+        issue_count = pull_request_info['open_issues']
+
+        if issue_count > 0:
+            base_name = pull_request_info['name']
+            repo_name = "%s/%s" % (pull_request_info['owner'], base_name)
+
+            print "  %s: %s" % (color_text(base_name, 'display-info-repo-title'), color_text(issue_count, 'display-info-repo-count'))
+
+            total += issue_count
+
+    print "-"
+    print "%s: %s" % (color_text("Total pull requests", 'display-info-total-title', True), color_text(total, 'display-info-total-count', True))
+
+def command_merge():
+    """Merges changes from the local pull request branch into master and deletes
+    the pull request branch"""
+
+    branch_name = get_current_branch_name()
+    pull_request_ID = get_pull_request_ID(branch_name)
+
+    print "Merging current branch with master"
+    ret = os.system('git checkout master')
+    if ret != 0:
+        raise UserWarning("Could not checkout master")
+
+    ret = os.system('git merge %s' % branch_name)
+    if ret != 0:
+        raise UserWarning("Merge with master failed. Resolve conflicts, switch"\
+                          "back into the pull request branch, and merge again")
+
+    print "Deleting pull request branch"
+    ret = os.system('git branch -D %s' % branch_name)
+    if ret != 0:
+        raise UserWarning("Could not delete branch")
+
+    print
+    print color_text("Done", 'success')
+
+def command_open(repo_name, pull_request_ID = None):
+    """Open a pull request in the browser"""
+
+    if pull_request_ID is None:
+        branch_name = get_current_branch_name()
+        pull_request_ID = get_pull_request_ID(branch_name)
+
+    pull_request = get_pull_request(repo_name, pull_request_ID)
+
+    open_URL(pull_request.get('html_url'))
+
+def command_show(repo_name):
+    """List open pull requests
+
+    Queries the github API for open pull requests in the current repo.
+    """
+
+    print "Loading open pull requests for %s..." % repo_name
+    print
+
+    pull_requests = get_pull_requests(repo_name)
+
+    if len(pull_requests) == 0:
+        print "No open pull requests found"
+
+    for pull_request in pull_requests:
+        display_pull_request(pull_request)
+
+def command_submit(repo_name, reviewer_repo_name = None, pull_body = None, pull_title = None):
+    """Push the current branch and create a pull request to your github reviewer
+    (or upstream)"""
+
+    if reviewer_repo_name is None or reviewer_repo_name == '':
+        reviewer_repo_name = get_repo_name_for_remote('upstream')
+
+    if reviewer_repo_name is None or reviewer_repo_name == '':
+        raise UserWarning("Could not determine a repo to submit this pull request to")
+
+    branch_name = get_current_branch_name(False)
+
+    print "Pushing local branch '%s' to origin" % branch_name
+
+    ret = os.system('git push origin %s' % branch_name)
+    if ret != 0:
+        raise UserWarning("Could not push this branch to your origin")
+
+    url = "http://github.com/api/v2/json/pulls/%s" % reviewer_repo_name
+
+    # pull[base] - A String of the branch or commit SHA that you want your changes to be pulled to.
+    # pull[head] - A String of the branch or commit SHA of your changes. Typically this will be a branch. If the branch is in a fork of the original repository, specify the username first: "my-user:some-branch".
+    # pull[title] - The String title of the Pull Request (and the related Issue).
+    # pull[body] - The String body of the Pull Request.
+
+    if pull_body == None:
+        pull_body = ''
+
+    if pull_title == None or pull_title == '':
+        pull_title = build_pull_request_title(branch_name)
+
+    params = {
+        'pull[base]': 'master',
+        'pull[head]': "%s:%s" % (username, branch_name),
+        'pull[title]': pull_title,
+        'pull[body]': pull_body
+    }
+
+    print "Sending pull request to %s" % reviewer_repo_name
+
+    data = github_json_request(url, params)
+
+    pull_request = data['pull']
+
+    display_pull_request(pull_request)
+
+    print color_text("Done", 'success')
+
+    if options['submit-open-github']:
+        open_URL(pull_request.get('html_url'))
+
+def command_update(repo_name):
+    """Merges changes from the remote branch into the local branch of the pull
+    request"""
+
+    branch_name = get_current_branch_name()
+    pull_request_ID = get_pull_request_ID(branch_name)
+
+    pull_request = get_pull_request(repo_name, pull_request_ID)
+    repo_url = get_repo_url(pull_request)
+
+    print "Pulling from %s (%s)" % (repo_url, pull_request['head']['ref'])
+
+    ret = os.system('git pull %s %s' % (repo_url, pull_request['head']['ref']))
+    if ret != 0:
+        raise UserWarning("Pull failed, resolve conflicts")
+
+    print
+    print color_text("Done", 'success')
+
+def display_pull_request(pull_request):
+    """Nicely display_pull_request info about a given pull request"""
+
+    display_pull_request_minimal(pull_request)
+    print "    %s" % color_text(pull_request.get('html_url'), 'display-title-url')
+
+    if pull_request.get('body').strip():
+        print fill(pull_request.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
+
+    print
+
+def display_pull_request_minimal(pull_request):
+    """Display minimal info about a given pull request"""
+
+    print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pull_request.get('number'), 'display-title-number', True), color_text(pull_request.get('title'), 'display-title-text', True), color_text(pull_request['user'].get('name'), 'display-title-user'), pull_request['user'].get('login'))
+
+def fetch_pull_request(pull_request):
+    """Fetches a pull request into a local branch, and returns the name of the
+    local branch"""
+
+    branch_name  = build_branch_name(pull_request)
+    repo_url = get_repo_url(pull_request)
+
+    remote_branch_name = pull_request['head']['ref']
+
+    ret = os.system('git fetch %s %s:%s' % (repo_url, remote_branch_name, branch_name))
+    if ret != 0:
+        raise UserWarning("Fetch failed")
+
+    return branch_name
+
+def get_current_branch_name(ensure_pull_request = True):
+    """Returns the name of the current pull request branch"""
+    branch_name = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
+
+    if ensure_pull_request and branch_name[0:13] != 'pull-request-':
+        raise UserWarning("Invalid branch: not a pull request")
+
+    return branch_name
+
+def get_default_repo_name():
+    repo_name = os.popen('git config github.repo').read().strip()
+
+    # get repo name from origin
+    if repo_name is None or repo_name == '':
+        repo_name = get_repo_name_for_remote('origin')
+
+    if repo_name is None or repo_name == '':
+        raise UserWarning("Failed to determine github repository name")
+
+    return repo_name
+
+def get_pull_request(repo_name, pull_request_ID):
+    """Returns information retrieved from github about the pull request"""
+
+    url = "http://github.com/api/v2/json/pulls/%s/%s" % (repo_name, pull_request_ID)
+    data = github_json_request(url)
+
+    return data['pull']
+
+def get_pull_requests(repo_name):
+    """Returns information retrieved from github about the open pull requests on
+    the repository"""
+
+    url = "http://github.com/api/v2/json/pulls/%s/open" % repo_name
+    data = github_json_request(url)
+
+    return data['pulls']
+
+def get_pull_request_ID(branch_name):
+    """Returns the pull request number of the branch with the name"""
+
+    m = re.search("^pull-request-(\d+)", branch_name)
+
+    return int(m.group(1))
+
+def get_repo_name_for_remote(remote_name):
+    """Returns the repository name for the remote with the name"""
+
+    remotes = os.popen('git remote -v').read()
+    m = re.search("^%s[^\n]+?github\.com[^\n]*?[:/]([^\n]+?)\.git" % remote_name, remotes, re.MULTILINE)
+
+    if m is not None and m.group(1) != '':
+        return m.group(1)
+
+def get_repo_url(pull_request):
+    """Returns the git URL of the repository the pull request originated from"""
+
+    repo_url = pull_request['head']['repository']['url'].replace('https', 'git')
+    private_repo = pull_request['head']['repository']['private']
+
+    if private_repo:
+        repo_url = repo_url.replace('git://github.com/', 'git@github.com:')
+
+    return repo_url
+
+def github_json_request(url, params = None):
+    if params is not None:
+        data = urllib.urlencode(params)
+        req = urllib2.Request(url, data)
+    else:
+        req = urllib2.Request(url)
+
+    authorize_request(req)
+
+    try:
+        response = urllib2.urlopen(req)
+    except urllib2.HTTPError, msg:
+        raise UserWarning("Error communicating with github: %s\n%s" % (url,msg))
+
+    data = response.read()
+    if data == '':
+        raise UserWarning("Invalid response from github")
+
+    data = json.loads(data)
+
+    return data
+
+def load_options():
+    all_config = os.popen('git config -l').read().strip()
+
+    matches = re.findall("^git-pull-request\.([^=]+)=([^\n]*)$", all_config, re.MULTILINE)
+    for k in matches:
+        value = k[1]
+
+        if value.lower() in ['f', 'false', 'no']:
+            value = False
+        elif value.lower() in ['t', 'true', 'yes']:
+            value = True
+        elif value.lower() in ['', 'none', 'null', 'nil']:
+            value = None
+
+        options[k[0]] = value
+
+def main():
+    load_options()
+
+    global username
+    global auth_string
+
+    repo_name = None
+    reviewer_repo_name = None
+
+    username = os.popen('git config github.user').read().strip()
+
+    auth_user = "%s/token" % username
+    auth_token = os.popen('git config github.token').read().strip()
+    auth_string = base64.encodestring('%s:%s' % (auth_user, auth_token)).replace('\n', '')
+
+    # parse command line options
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hr:u:", ["help","repo=","reviewer="])
+    except getopt.GetoptError, e:
+        raise UserWarning("%s\nFor help use --help" % e)
+
+    # process options
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            command_help()
+            sys.exit(0)
+        if o in ("-r", "--repo"):
+            if re.search('/', a):
+              repo_name = a
+            else:
+              repo_name = get_repo_name_for_remote(a)
+        if o in ("-u", "--reviewer"):
+            reviewer_repo_name = a
+
+    # get repo name from git config:
+    if repo_name is None or repo_name == '':
+        repo_name = get_default_repo_name()
+
+    if reviewer_repo_name is None or reviewer_repo_name == '':
+        reviewer_repo_name = os.popen('git config github.reviewer-repo').read().strip()
+
+    # process arguments
+    if len(args) > 0:
+        if args[0] == "update":
+            command_update(repo_name)
+        elif args[0] == "merge":
+            command_merge()
+        elif args[0] == "fetch-all":
+            command_fetch_all(repo_name)
+        elif args[0] == "open":
+            if len(args) >= 2:
+                command_open(repo_name, args[1])
+            else:
+                command_open(repo_name)
+        elif args[0] == "help":
+            command_help()
+        elif args[0] == "info":
+            command_info(username)
+        elif args[0] == "submit":
+            pull_body = None
+            pull_title = None
+
+            if len(args) >= 2:
+                pull_body = args[1]
+
+            if len(args) >= 3:
+                pull_title = args[2]
+
+            command_submit(repo_name, reviewer_repo_name, pull_body, pull_title)
+        else:
+            command_fetch(repo_name, args[0])
+    else:
+        command_show(repo_name)
+
+def open_URL(url):
+    os.system('open "%s"' % url)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except UserWarning, e:
+        print color_text(e, 'error')
