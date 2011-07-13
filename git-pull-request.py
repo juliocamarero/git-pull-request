@@ -6,17 +6,60 @@ Automatically check out github pull requests into their own branch.
 
 Usage:
 
-    git pull-request [<options>] <command> [<pull request number>]
+    git pull-request [<options>] <command> [<args>]
 
-Options:
+Global Options:
 
     -h, --help
-        Display this message
+        Display this message.
 
     -r <repo>, --repo <repo>
         Use this github repo instead of the 'remote origin' or 'github.repo'
-        git config settings. This can be used to specify either a remote name
+        git config setting. This can be used to specify either a remote name
         or the full reposity name (user/repo).
+
+    -u <reviewer repo>, --reviewer <reviewer repo>
+        Send pull requests to this github repo instead of the 'remote upstream'
+        or 'github.reviewer' git config setting. This must be the full
+        repository name (user/repo).
+
+Commands:
+
+    continue-update, cup
+        Continues the current update after conflicts have been fixed.
+
+    fetch <pull request ID>
+        Fetches the pull request into a local branch, optionally updating it
+        and checking it out.
+
+    fetch-all
+        Fetches all open pull requests into local branches.
+
+    help
+        Displays this message.
+
+    info
+        Displays a list of all the user's github repositories and the number
+        of pull requests open on each.
+
+    merge
+        Merges the current pull request branch into master and deletes the
+        branch.
+
+    open [<pull request ID>]
+        Opens either the current pull request or the specified request on
+        github.
+
+    pull
+        Pulls remote changes from the other user's remote branch into the local
+        pull request branch.
+
+    submit [<pull body>] [<pull title>]
+        Sends a pull request to the user's reviewer on github.
+
+    update [<pull request ID>]
+        Updates the current pull request or the specified request with the local
+        changes in master, using either a rebase or merge.
 
 Copyright (C) 2011 Connor McKay <connor.mckay@liferay.com>
 
@@ -339,13 +382,13 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
     if options['submit-open-github']:
         open_URL(pull_request.get('html_url'))
 
-def command_update(target = None):
+def command_update(repo_name, target = None):
     if target == None:
         branch_name = get_current_branch_name()
     else:
         try:
             pull_request_ID = int(target)
-            pull_request = get_pull_request(pull_request_ID)
+            pull_request = get_pull_request(repo_name, pull_request_ID)
             branch_name = build_branch_name(pull_request)
         except ValueError:
             branch_name = target
@@ -617,28 +660,25 @@ def main():
 
     # process arguments
     if len(args) > 0:
-        if args[0] == 'pull':
-            command_pull(repo_name)
-        elif args[0] in ('continue-update', 'cup'):
+        if args[0] in ('continue-update', 'cup'):
             command_continue_update()
-        elif args[0] == 'merge':
-            command_merge()
+        elif args[0] == 'fetch':
+            command_fetch(repo_name, args[1], fetch_auto_update)
         elif args[0] == 'fetch-all':
             command_fetch_all(repo_name)
+        elif args[0] == 'help':
+            command_help()
+        elif args[0] == 'info':
+            command_info(username)
+        elif args[0] == 'merge':
+            command_merge()
         elif args[0] == 'open':
             if len(args) >= 2:
                 command_open(repo_name, args[1])
             else:
                 command_open(repo_name)
-        elif args[0] == 'help':
-            command_help()
-        elif args[0] == 'update':
-            if len(args) >= 2:
-                    command_update(args[1])
-            else:
-                command_update()
-        elif args[0] == 'info':
-            command_info(username)
+        elif args[0] == 'pull':
+            command_pull(repo_name)
         elif args[0] == 'submit':
             pull_body = None
             pull_title = None
@@ -650,6 +690,11 @@ def main():
                 pull_title = args[2]
 
             command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title)
+        elif args[0] == 'update':
+            if len(args) >= 2:
+                    command_update(repo_name, args[1])
+            else:
+                command_update(repo_name)
         else:
             command_fetch(repo_name, args[0], fetch_auto_update)
     else:
