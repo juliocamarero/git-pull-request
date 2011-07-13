@@ -242,7 +242,7 @@ def command_show(repo_name):
     for pull_request in pull_requests:
         display_pull_request(pull_request)
 
-def command_submit(repo_name, reviewer_repo_name = None, pull_body = None, pull_title = None):
+def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = None, pull_title = None):
     """Push the current branch and create a pull request to your github reviewer
     (or upstream)"""
 
@@ -286,8 +286,8 @@ def command_submit(repo_name, reviewer_repo_name = None, pull_body = None, pull_
 
     pull_request = data['pull']
 
+    print
     display_pull_request(pull_request)
-
     print color_text("Done", 'success')
 
     if options['submit-open-github']:
@@ -449,7 +449,6 @@ def load_options():
 def main():
     load_options()
 
-    global username
     global auth_string
 
     repo_name = None
@@ -514,7 +513,7 @@ def main():
             if len(args) >= 3:
                 pull_title = args[2]
 
-            command_submit(repo_name, reviewer_repo_name, pull_body, pull_title)
+            command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title)
         else:
             command_fetch(repo_name, args[0])
     else:
