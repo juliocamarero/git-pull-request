@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 """
-Automatically check out github pull requests into their own branch.
+Automate many common tasks involving pull requests.
 
 Usage:
 
     gitpr [<options>] <command> [<args>]
 
-Global Options:
+Options:
 
     -h, --help
         Display this message.
