@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-"""git-pull-request
-
+"""
 Automatically check out github pull requests into their own branch.
 
 Usage:
@@ -63,7 +62,7 @@ Commands:
     submit [<pull body>] [<pull title>]
         Sends a pull request to the user's reviewer on github.
 
-    update [<pull request ID>]
+    update [<pull request ID or branch name>]
         Updates the current pull request or the specified request with the local
         changes in master, using either a rebase or merge.
 
