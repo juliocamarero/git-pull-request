@@ -68,7 +68,9 @@ options = {
     'color-display-info-total-count': 'magenta',
 
     # Sets a directory to be used for performing updates to prevent
-    # excessive rebuilding by IDE's.
+    # excessive rebuilding by IDE's. Warning: This directory will be hard reset
+    # every time an update is performed, so do not do any work other than
+    # conflict merges in the work directory.
     'work-dir': None,
 
     # Determines whether fetch will automatically checkout the new branch.
@@ -171,12 +173,10 @@ def command_fetch(repo_name, pull_request_ID, auto_update = False):
     print
     display_status()
 
-def command_continue():
-    branch_name = get_current_branch_name()
+def command_continue_update():
+    print color_text("Continuing update from master", 'status')
 
-    print color_text("Continuing update of %s from master" % branch_name, 'status')
-
-    continue_update(branch_name)
+    continue_update()
     print
     display_status()
 
@@ -402,14 +402,17 @@ def complete_update(branch_name):
     print
     print color_text("Updating %s from master complete" % branch_name, 'success')
 
-def continue_update(branch_name):
+def continue_update():
     if options['update-method'] == 'merge':
         ret = os.system('git commit')
     elif options['update-method'] == 'rebase':
         ret = os.system('git rebase --continue')
 
     if ret != 0:
-        raise UserWarning("Updating %s from master failed\nResolve conflicts and 'git add' files, then run 'gitpr update --continue'" % branch_name)
+        raise UserWarning("Updating from master failed\nResolve conflicts and 'git add' files, then run 'gitpr continue-update'")
+
+    # The branch name will not be correct until the merge/rebase is complete
+    branch_name = get_current_branch_name()
 
     complete_update(branch_name)
 
@@ -430,14 +433,10 @@ def display_pull_request_minimal(pull_request):
     print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pull_request.get('number'), 'display-title-number', True), color_text(pull_request.get('title'), 'display-title-text', True), color_text(pull_request['user'].get('name'), 'display-title-user'), pull_request['user'].get('login'))
 
 def display_status():
-    """Displays the current branch name and whether the user is in the work
-    directory"""
+    """Displays the current branch name"""
 
     branch_name = get_current_branch_name(False)
     print "Current branch: %s" % branch_name
-
-    if in_work_dir():
-        print color_text("In work directory", 'warning')
 
 def fetch_pull_request(pull_request):
     """Fetches a pull request into a local branch, and returns the name of the
@@ -456,7 +455,7 @@ def fetch_pull_request(pull_request):
 
 def get_current_branch_name(ensure_pull_request = True):
     """Returns the name of the current pull request branch"""
-    branch_name = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
+    branch_name = os.popen('git rev-parse --abbrev-ref HEAD').read().strip()
 
     if ensure_pull_request and branch_name[0:13] != 'pull-request-':
         raise UserWarning("Invalid branch: not a pull request")
@@ -618,29 +617,29 @@ def main():
 
     # process arguments
     if len(args) > 0:
-        if args[0] == "pull":
+        if args[0] == 'pull':
             command_pull(repo_name)
-        elif args[0] == "continue":
-            command_continue()
-        elif args[0] == "merge":
+        elif args[0] in ('continue-update', 'cup'):
+            command_continue_update()
+        elif args[0] == 'merge':
             command_merge()
-        elif args[0] == "fetch-all":
+        elif args[0] == 'fetch-all':
             command_fetch_all(repo_name)
-        elif args[0] == "open":
+        elif args[0] == 'open':
             if len(args) >= 2:
                 command_open(repo_name, args[1])
             else:
                 command_open(repo_name)
-        elif args[0] == "help":
+        elif args[0] == 'help':
             command_help()
-        elif args[0] == "update":
+        elif args[0] == 'update':
             if len(args) >= 2:
                     command_update(args[1])
             else:
                 command_update()
-        elif args[0] == "info":
+        elif args[0] == 'info':
             command_info(username)
-        elif args[0] == "submit":
+        elif args[0] == 'submit':
             pull_body = None
             pull_title = None
 
@@ -660,9 +659,15 @@ def open_URL(url):
     os.system('open "%s"' % url)
 
 def update_branch(branch_name):
+    if in_work_dir():
+        raise UserWarning("Cannot perform an update from within the work directory.\nIf you are done fixing conflicts run 'gitpr continue-update' to complete the update.")
+
     if options['work-dir']:
         print color_text("Switching to work directory", 'status')
         os.chdir(options['work-dir'])
+        ret = os.system('git reset --hard && git clean -f')
+        if ret != 0:
+            raise UserWarning("Cleaning up work directory failed, update not performed")
 
     ret = os.system('git checkout %s' % branch_name)
     if ret != 0:
@@ -679,7 +684,7 @@ def update_branch(branch_name):
     if ret != 0:
         if options['work-dir']:
             chdir(options['work-dir'])
-        raise UserWarning("Updating %s from master failed\nResolve conflicts and 'git add' files, then run 'gitpr update --continue'" % branch_name)
+        raise UserWarning("Updating %s from master failed\nResolve conflicts and 'git add' files, then run 'gitpr continue-update'" % branch_name)
 
     complete_update(branch_name)
 
