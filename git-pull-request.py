@@ -69,13 +69,13 @@ options = {
     # excessive rebuilding by IDE's
     'work-dir': None,
 
+    # Determines whether fetch will automatically checkout the new branch
+    'fetch-auto-checkout': True,
+
     # Determines whether to automatically update a fetched pull request branch
     # by either merging master into it, or rebasing it onto master.
     # Possible options: None, 'merge', 'rebase'
     'fetch-auto-update': None,
-
-    # Determines whether fetch will automatically checkout the new branch
-    'fetch-auto-checkout': True,
 
     # Determines whether to open newly submitted pull requests on github
     'submit-open-github': True
@@ -150,9 +150,27 @@ def command_fetch(repo_name, pull_request_ID):
 
     if options['fetch-auto-checkout']:
         ret = os.system('git checkout %s' % branch_name)
+        if ret != 0:
+            raise UserWarning("Could not checkout %s" % branch_name)
+
+        maybe_update_branch(branch_name)
+
+    if options['work-dir']:
+
 
     print
     print color_text("Done. Examine changes then run 'git pull-request merge' to merge changes into master", 'success')
+
+def maybe_update_branch(branch_name):
+    if options['fetch-auto-update'] == 'merge':
+            ret = os.system('git merge master')
+            if ret != 0:
+                raise UserWarning("Merging master into %s failed, resolve conflicts" % branch_name)
+
+    elif options['fetch-auto-update'] == 'rebase':
+        ret = os.system('git rebase master')
+        if ret != 0:
+            raise UserWarning("Rebasing %s onto master failed, resolve conflicts" % branch_name)
 
 def command_fetch_all(repo_name):
     """Fetches all pull requests into local branches"""
@@ -527,3 +545,4 @@ if __name__ == "__main__":
         main()
     except UserWarning, e:
         print color_text(e, 'error')
+        sys.exit(1)
