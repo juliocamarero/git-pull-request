@@ -25,6 +25,12 @@ Global Options:
 
 Commands:
 
+    #no command#
+        Displays a list of the open pull requests on this repository.
+
+    #no command# <pull request ID>
+        Performs a fetch.
+
     continue-update, cup
         Continues the current update after conflicts have been fixed.
 
