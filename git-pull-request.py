@@ -55,7 +55,9 @@ from textwrap import fill
 options = {
     # Color Scheme
     'color-success': 'green',
+    'color-status': 'blue',
     'color-error': 'red',
+    'color-warning': 'red',
     'color-display-title-number': 'magenta',
     'color-display-title-text': 'red',
     'color-display-title-user': 'blue',
@@ -65,17 +67,22 @@ options = {
     'color-display-info-total-title': 'green',
     'color-display-info-total-count': 'magenta',
 
-    # Sets a directory to be used for performing merges/rebases to prevent
-    # excessive rebuilding by IDE's
+    # Sets a directory to be used for performing updates to prevent
+    # excessive rebuilding by IDE's.
     'work-dir': None,
 
-    # Determines whether fetch will automatically checkout the new branch
-    'fetch-auto-checkout': True,
+    # Determines whether fetch will automatically checkout the new branch.
+    'fetch-auto-checkout': False,
 
-    # Determines whether to automatically update a fetched pull request branch
-    # by either merging master into it, or rebasing it onto master.
-    # Possible options: None, 'merge', 'rebase'
-    'fetch-auto-update': None,
+    # Determines whether to automatically update a fetched pull request branch.
+    # Setting this option to true will also cause the new branch to be checked
+    # out.
+    'fetch-auto-update': False,
+
+    # Sets the method to use when updating pull request branches with changes
+    # in master.
+    # Possible options: 'merge', 'rebase'
+    'update-method': 'rebase',
 
     # Determines whether to open newly submitted pull requests on github
     'submit-open-github': True
@@ -114,6 +121,11 @@ def build_pull_request_title(branch_name):
 
     return branch_name
 
+def chdir(dir):
+    f = open('/tmp/git-pull-request-chdir', 'wb')
+    f.write(dir)
+    f.close()
+
 def color_text(text, token, bold = False):
     """Return the given text in ANSI colors"""
 
@@ -137,43 +149,42 @@ def color_text(text, token, bold = False):
     else:
         return text
 
-def command_fetch(repo_name, pull_request_ID):
+def command_fetch(repo_name, pull_request_ID, auto_update = False):
     """Fetches a pull request into a local branch"""
 
-    print "Loading pull request info for request %s..." % pull_request_ID
+    print color_text("Fetching pull request", 'status')
     print
 
     pull_request = get_pull_request(repo_name, pull_request_ID)
+    display_pull_request(pull_request)
     branch_name = fetch_pull_request(pull_request)
 
-    display_pull_request(pull_request)
-
-    if options['fetch-auto-checkout']:
+    if auto_update:
+        update_branch(branch_name)
+    elif options['fetch-auto-checkout']:
         ret = os.system('git checkout %s' % branch_name)
         if ret != 0:
             raise UserWarning("Could not checkout %s" % branch_name)
 
-        maybe_update_branch(branch_name)
-
-    if options['work-dir']:
-
-
     print
-    print color_text("Done. Examine changes then run 'git pull-request merge' to merge changes into master", 'success')
+    print color_text("Fetch completed", 'success')
+    print
+    display_status()
 
-def maybe_update_branch(branch_name):
-    if options['fetch-auto-update'] == 'merge':
-            ret = os.system('git merge master')
-            if ret != 0:
-                raise UserWarning("Merging master into %s failed, resolve conflicts" % branch_name)
+def command_continue():
+    branch_name = get_current_branch_name()
 
-    elif options['fetch-auto-update'] == 'rebase':
-        ret = os.system('git rebase master')
-        if ret != 0:
-            raise UserWarning("Rebasing %s onto master failed, resolve conflicts" % branch_name)
+    print color_text("Continuing update of %s from master" % branch_name, 'status')
+
+    continue_update(branch_name)
+    print
+    display_status()
 
 def command_fetch_all(repo_name):
     """Fetches all pull requests into local branches"""
+
+    print color_text("Fetching all pull requests", 'status')
+    print
 
     pull_requests = get_pull_requests(repo_name)
     for pull_request in pull_requests:
@@ -181,15 +192,18 @@ def command_fetch_all(repo_name):
         display_pull_request_minimal(pull_request)
         print
 
+    display_status()
+
 def command_help():
     print __doc__
 
 def command_info(username):
+    print color_text("Loading information on repositories for %s" % username, 'status')
+    print
+
     url = "http://github.com/api/v2/json/repos/show/%s" % username
     data = github_json_request(url)
     repos = data['repositories']
-
-    print
 
     total = 0
     issue_list = {}
@@ -206,6 +220,8 @@ def command_info(username):
 
     print "-"
     print "%s: %s" % (color_text("Total pull requests", 'display-info-total-title', True), color_text(total, 'display-info-total-count', True))
+    print
+    display_status()
 
 def command_merge():
     """Merges changes from the local pull request branch into master and deletes
@@ -214,7 +230,9 @@ def command_merge():
     branch_name = get_current_branch_name()
     pull_request_ID = get_pull_request_ID(branch_name)
 
-    print "Merging current branch with master"
+    print color_text("Merging %s into master" % branch_name, 'status')
+    print
+
     ret = os.system('git checkout master')
     if ret != 0:
         raise UserWarning("Could not checkout master")
@@ -224,13 +242,15 @@ def command_merge():
         raise UserWarning("Merge with master failed. Resolve conflicts, switch"\
                           "back into the pull request branch, and merge again")
 
-    print "Deleting pull request branch"
+    print color_text("Deleting pull request branch", 'status')
     ret = os.system('git branch -D %s' % branch_name)
     if ret != 0:
         raise UserWarning("Could not delete branch")
 
     print
-    print color_text("Done", 'success')
+    print color_text("Merge completed", 'success')
+    print
+    display_status()
 
 def command_open(repo_name, pull_request_ID = None):
     """Open a pull request in the browser"""
@@ -249,7 +269,7 @@ def command_show(repo_name):
     Queries the github API for open pull requests in the current repo.
     """
 
-    print "Loading open pull requests for %s..." % repo_name
+    print color_text("Loading open pull requests for %s" % repo_name, 'status')
     print
 
     pull_requests = get_pull_requests(repo_name)
@@ -260,9 +280,15 @@ def command_show(repo_name):
     for pull_request in pull_requests:
         display_pull_request(pull_request)
 
+    display_status()
+
 def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = None, pull_title = None):
     """Push the current branch and create a pull request to your github reviewer
     (or upstream)"""
+
+    branch_name = get_current_branch_name(False)
+
+    print color_text("Submitting pull request for %s" % branch_name, 'status')
 
     if reviewer_repo_name is None or reviewer_repo_name == '':
         reviewer_repo_name = get_repo_name_for_remote('upstream')
@@ -270,9 +296,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
     if reviewer_repo_name is None or reviewer_repo_name == '':
         raise UserWarning("Could not determine a repo to submit this pull request to")
 
-    branch_name = get_current_branch_name(False)
-
-    print "Pushing local branch '%s' to origin" % branch_name
+    print color_text("Pushing local branch %s to origin" % branch_name, 'status')
 
     ret = os.system('git push origin %s' % branch_name)
     if ret != 0:
@@ -298,7 +322,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
         'pull[body]': pull_body
     }
 
-    print "Sending pull request to %s" % reviewer_repo_name
+    print color_text("Sending pull request to %s" % reviewer_repo_name, 'status')
 
     data = github_json_request(url, params)
 
@@ -306,29 +330,88 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 
     print
     display_pull_request(pull_request)
-    print color_text("Done", 'success')
+    print
+
+    print color_text("Pull request submitted", 'success')
+    print
+    display_status()
 
     if options['submit-open-github']:
         open_URL(pull_request.get('html_url'))
 
-def command_update(repo_name):
-    """Merges changes from the remote branch into the local branch of the pull
+def command_update(target = None):
+    if target == None:
+        branch_name = get_current_branch_name()
+    else:
+        try:
+            pull_request_ID = int(target)
+            pull_request = get_pull_request(pull_request_ID)
+            branch_name = build_branch_name(pull_request)
+        except ValueError:
+            branch_name = target
+
+    print color_text("Updating %s from master" % branch_name, 'status')
+
+    update_branch(branch_name)
+    print
+    display_status()
+
+def command_pull(repo_name):
+    """Pulls changes from the remote branch into the local branch of the pull
     request"""
 
     branch_name = get_current_branch_name()
+
+    print color_text("Pulling remote changes into %s" % branch_name, 'status')
+
     pull_request_ID = get_pull_request_ID(branch_name)
 
     pull_request = get_pull_request(repo_name, pull_request_ID)
     repo_url = get_repo_url(pull_request)
 
-    print "Pulling from %s (%s)" % (repo_url, pull_request['head']['ref'])
+    print color_text("Pulling from %s (%s)" % (repo_url, pull_request['head']['ref']), 'status')
 
     ret = os.system('git pull %s %s' % (repo_url, pull_request['head']['ref']))
     if ret != 0:
         raise UserWarning("Pull failed, resolve conflicts")
 
     print
-    print color_text("Done", 'success')
+    print color_text("Updating %s from remote completed" % branch_name, 'success')
+    print
+    display_status()
+
+def complete_update(branch_name):
+    if in_work_dir():
+        ret = os.system('git checkout master')
+        if ret != 0:
+            raise UserWarning("Could not checkout master branch in work directory")
+
+        original_dir_path = get_original_dir_path()
+        print color_text("Switching to original directory", 'status')
+        os.chdir(original_dir_path)
+        chdir(original_dir_path)
+        if get_current_branch_name(False) == branch_name:
+            ret = os.system('git reset --hard && git clean -f')
+            if ret != 0:
+                raise UserWarning("Syncing branch %s with work directory failed" % branch_name)
+        else:
+            ret = os.system('git checkout %s' % branch_name)
+            if ret != 0:
+                raise UserWarning("Could not checkout %s" % branch_name)
+
+    print
+    print color_text("Updating %s from master complete" % branch_name, 'success')
+
+def continue_update(branch_name):
+    if options['update-method'] == 'merge':
+        ret = os.system('git commit')
+    elif options['update-method'] == 'rebase':
+        ret = os.system('git rebase --continue')
+
+    if ret != 0:
+        raise UserWarning("Updating %s from master failed\nResolve conflicts and 'git add' files, then run 'gitpr update --continue'" % branch_name)
+
+    complete_update(branch_name)
 
 def display_pull_request(pull_request):
     """Nicely display_pull_request info about a given pull request"""
@@ -345,6 +428,16 @@ def display_pull_request_minimal(pull_request):
     """Display minimal info about a given pull request"""
 
     print "%s - %s by %s (%s)" % (color_text("REQUEST %s" % pull_request.get('number'), 'display-title-number', True), color_text(pull_request.get('title'), 'display-title-text', True), color_text(pull_request['user'].get('name'), 'display-title-user'), pull_request['user'].get('login'))
+
+def display_status():
+    """Displays the current branch name and whether the user is in the work
+    directory"""
+
+    branch_name = get_current_branch_name(False)
+    print "Current branch: %s" % branch_name
+
+    if in_work_dir():
+        print color_text("In work directory", 'warning')
 
 def fetch_pull_request(pull_request):
     """Fetches a pull request into a local branch, and returns the name of the
@@ -381,6 +474,14 @@ def get_default_repo_name():
         raise UserWarning("Failed to determine github repository name")
 
     return repo_name
+
+def get_git_base_path():
+    return os.popen('git rev-parse --show-toplevel').read().strip()
+
+def get_original_dir_path():
+    git_base_path = get_git_base_path()
+    config_path = os.readlink(os.path.join(git_base_path, '.git', 'config'))
+    return os.path.dirname(os.path.dirname(config_path))
 
 def get_pull_request(repo_name, pull_request_ID):
     """Returns information retrieved from github about the pull request"""
@@ -448,6 +549,11 @@ def github_json_request(url, params = None):
 
     return data
 
+def in_work_dir():
+    git_base_path = get_git_base_path()
+
+    return os.path.islink(os.path.join(git_base_path, '.git', 'config'))
+
 def load_options():
     all_config = os.popen('git config -l').read().strip()
 
@@ -455,11 +561,11 @@ def load_options():
     for k in matches:
         value = k[1]
 
-        if value.lower() in ['f', 'false', 'no']:
+        if value.lower() in ('f', 'false', 'no'):
             value = False
-        elif value.lower() in ['t', 'true', 'yes']:
+        elif value.lower() in ('t', 'true', 'yes'):
             value = True
-        elif value.lower() in ['', 'none', 'null', 'nil']:
+        elif value.lower() in ('', 'none', 'null', 'nil'):
             value = None
 
         options[k[0]] = value
@@ -480,22 +586,28 @@ def main():
 
     # parse command line options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hr:u:", ["help","repo=","reviewer="])
+        opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:', ['help', 'repo=', 'reviewer=', 'update', 'no-update'])
     except getopt.GetoptError, e:
         raise UserWarning("%s\nFor help use --help" % e)
 
+    fetch_auto_update = options['fetch-auto-update']
+
     # process options
     for o, a in opts:
-        if o in ("-h", "--help"):
+        if o in ('-h', '--help'):
             command_help()
             sys.exit(0)
-        if o in ("-r", "--repo"):
+        elif o in ('-r', '--repo'):
             if re.search('/', a):
               repo_name = a
             else:
               repo_name = get_repo_name_for_remote(a)
-        if o in ("-u", "--reviewer"):
+        elif o in ('-u', '--reviewer'):
             reviewer_repo_name = a
+        elif o == '--update':
+            fetch_auto_update = True
+        elif o == '--no-update':
+            fetch_auto_update = False
 
     # get repo name from git config:
     if repo_name is None or repo_name == '':
@@ -506,8 +618,10 @@ def main():
 
     # process arguments
     if len(args) > 0:
-        if args[0] == "update":
-            command_update(repo_name)
+        if args[0] == "pull":
+            command_pull(repo_name)
+        elif args[0] == "continue":
+            command_continue()
         elif args[0] == "merge":
             command_merge()
         elif args[0] == "fetch-all":
@@ -519,6 +633,11 @@ def main():
                 command_open(repo_name)
         elif args[0] == "help":
             command_help()
+        elif args[0] == "update":
+            if len(args) >= 2:
+                    command_update(args[1])
+            else:
+                command_update()
         elif args[0] == "info":
             command_info(username)
         elif args[0] == "submit":
@@ -533,12 +652,36 @@ def main():
 
             command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title)
         else:
-            command_fetch(repo_name, args[0])
+            command_fetch(repo_name, args[0], fetch_auto_update)
     else:
         command_show(repo_name)
 
 def open_URL(url):
     os.system('open "%s"' % url)
+
+def update_branch(branch_name):
+    if options['work-dir']:
+        print color_text("Switching to work directory", 'status')
+        os.chdir(options['work-dir'])
+
+    ret = os.system('git checkout %s' % branch_name)
+    if ret != 0:
+        if options['work-dir']:
+            raise UserWarning("Could not checkout %s in the work directory, update not performed" % branch_name)
+        else:
+            raise UserWarning("Could not checkout %s, update not performed" % branch_name)
+
+    if options['update-method'] == 'merge':
+        ret = os.system('git merge master')
+    elif options['update-method'] == 'rebase':
+        ret = os.system('git rebase master')
+
+    if ret != 0:
+        if options['work-dir']:
+            chdir(options['work-dir'])
+        raise UserWarning("Updating %s from master failed\nResolve conflicts and 'git add' files, then run 'gitpr update --continue'" % branch_name)
+
+    complete_update(branch_name)
 
 if __name__ == "__main__":
     try:
