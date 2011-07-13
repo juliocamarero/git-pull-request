@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-"""git pull-request
+"""git-pull-request
 
 Automatically check out github pull requests into their own branch.
 
 Usage:
 
-    git pull-request [<options>] <command> [<args>]
+    gitpr [<options>] <command> [<args>]
 
 Global Options:
 
