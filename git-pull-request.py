@@ -30,6 +30,10 @@ Commands:
     #no command# <pull request ID>
         Performs a fetch.
 
+    close [<comment>]
+        Closes the current pull request on github and deletes the pull request
+        branch.
+
     continue-update, cup
         Continues the current update after conflicts have been fixed.
 
@@ -106,10 +110,10 @@ options = {
     'color-status': 'blue',
     'color-error': 'red',
     'color-warning': 'red',
+    'color-url': 'cyan',
     'color-display-title-number': 'magenta',
     'color-display-title-text': 'red',
     'color-display-title-user': 'blue',
-    'color-display-title-url': 'cyan',
     'color-display-info-repo-title': 'black',
     'color-display-info-repo-count': 'magenta',
     'color-display-info-total-title': 'green',
@@ -221,6 +225,41 @@ def command_fetch(repo_name, pull_request_ID, auto_update = False):
     print
     display_status()
 
+def command_close(repo_name, comment = None):
+    """Closes the current pull request on github with the optional comment, then
+    deletes the branch."""
+
+    print color_text("Closing pull request", 'status')
+    print
+
+    branch_name = get_current_branch_name()
+    pull_request_ID = get_pull_request_ID(branch_name)
+    pull_request = get_pull_request(repo_name, pull_request_ID)
+
+    display_pull_request(pull_request)
+
+    if comment is not None:
+        url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
+        params = {'comment': comment}
+        github_json_request(url, params)
+
+    url = "http://github.com/api/v2/json/issues/close/%s/%s" % (repo_name, pull_request_ID)
+    github_json_request(url)
+
+    ret = os.system('git checkout master')
+    if ret != 0:
+        raise UserWarning("Could not checkout master")
+
+    print color_text("Deleting branch %s" % branch_name, 'status')
+    ret = os.system('git branch -D %s' % branch_name)
+    if ret != 0:
+        raise UserWarning("Could not delete branch")
+
+    print
+    print color_text("Pull request closed", 'success')
+    print
+    display_status()
+
 def command_continue_update():
     print color_text("Continuing update from master", 'status')
 
@@ -290,7 +329,7 @@ def command_merge():
         raise UserWarning("Merge with master failed. Resolve conflicts, switch"\
                           "back into the pull request branch, and merge again")
 
-    print color_text("Deleting pull request branch", 'status')
+    print color_text("Deleting branch %s" % branch_name, 'status')
     ret = os.system('git branch -D %s' % branch_name)
     if ret != 0:
         raise UserWarning("Could not delete branch")
@@ -468,7 +507,7 @@ def display_pull_request(pull_request):
     """Nicely display_pull_request info about a given pull request"""
 
     display_pull_request_minimal(pull_request)
-    print "    %s" % color_text(pull_request.get('html_url'), 'display-title-url')
+    print "    %s" % color_text(pull_request.get('html_url'), 'url')
 
     if pull_request.get('body').strip():
         print fill(pull_request.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
@@ -665,7 +704,12 @@ def main():
 
     # process arguments
     if len(args) > 0:
-        if args[0] in ('continue-update', 'cup'):
+        if args[0] == 'close':
+            if len(args) >= 2:
+                command_close(repo_name, args[1])
+            else:
+                command_close(repo_name)
+        elif args[0] in ('continue-update', 'cup'):
             command_continue_update()
         elif args[0] == 'fetch':
             command_fetch(repo_name, args[1], fetch_auto_update)
