@@ -625,7 +625,7 @@ def github_json_request(url, params = None):
     try:
         response = urllib2.urlopen(req)
     except urllib2.HTTPError, msg:
-        raise UserWarning("Error communicating with github: %s\n%s" % (url,msg))
+        raise UserWarning("Error communicating with github: %s\n%s" % (url, msg))
 
     data = response.read()
     if data == '':
