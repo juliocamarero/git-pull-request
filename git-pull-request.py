@@ -110,7 +110,7 @@ options = {
     'color-status': 'blue',
     'color-error': 'red',
     'color-warning': 'red',
-    'color-url': 'cyan',
+    'color-display-title-url': 'cyan',
     'color-display-title-number': 'magenta',
     'color-display-title-text': 'red',
     'color-display-title-user': 'blue',
@@ -507,7 +507,7 @@ def display_pull_request(pull_request):
     """Nicely display_pull_request info about a given pull request"""
 
     display_pull_request_minimal(pull_request)
-    print "    %s" % color_text(pull_request.get('html_url'), 'url')
+    print "    %s" % color_text(pull_request.get('html_url'), 'display-title-url')
 
     if pull_request.get('body').strip():
         print fill(pull_request.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
