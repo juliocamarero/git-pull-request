@@ -119,11 +119,8 @@ options = {
     'color-display-info-total-title': 'green',
     'color-display-info-total-count': 'magenta',
 
-    # Sets a directory to be used for performing updates to prevent
-    # excessive rebuilding by IDE's. Warning: This directory will be hard reset
-    # every time an update is performed, so do not do any work other than
-    # conflict merges in the work directory.
-    'work-dir': None,
+    # Sets the default comment to post when closing a pull request.
+    'close-default-comment': None,
 
     # Determines whether fetch will automatically checkout the new branch.
     'fetch-auto-checkout': False,
@@ -133,13 +130,23 @@ options = {
     # out.
     'fetch-auto-update': False,
 
+    # Determines whether to automatically close pull requests after merging
+    # them.
+    'merge-auto-close': True,
+
     # Sets the method to use when updating pull request branches with changes
     # in master.
     # Possible options: 'merge', 'rebase'
     'update-method': 'rebase',
 
     # Determines whether to open newly submitted pull requests on github
-    'submit-open-github': True
+    'submit-open-github': True,
+
+    # Sets a directory to be used for performing updates to prevent
+    # excessive rebuilding by IDE's. Warning: This directory will be hard reset
+    # every time an update is performed, so do not do any work other than
+    # conflict merges in the work directory.
+    'work-dir': None
 }
 
 #print json.dumps(data,sort_keys=True, indent=4)
@@ -238,13 +245,7 @@ def command_close(repo_name, comment = None):
 
     display_pull_request(pull_request)
 
-    if comment is not None:
-        url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
-        params = {'comment': comment}
-        github_json_request(url, params)
-
-    url = "http://github.com/api/v2/json/issues/close/%s/%s" % (repo_name, pull_request_ID)
-    github_json_request(url)
+    close_pull_request(repo_name, pull_request_ID, comment)
 
     ret = os.system('git checkout master')
     if ret != 0:
@@ -259,6 +260,21 @@ def command_close(repo_name, comment = None):
     print color_text("Pull request closed", 'success')
     print
     display_status()
+
+def post_comment(repo_name, pull_request_ID, comment):
+    url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
+    params = {'comment': comment}
+    github_json_request(url, params)
+
+def close_pull_request(repo_name, pull_request_ID, comment = None):
+    if comment is None:
+        comment = options['close-default-comment']
+
+    if comment is not None and comment != '':
+        post_comment(repo_name, pull_request_ID, comment)
+
+    url = "http://github.com/api/v2/json/issues/close/%s/%s" % (repo_name, pull_request_ID)
+    github_json_request(url)
 
 def command_continue_update():
     print color_text("Continuing update from master", 'status')
@@ -310,7 +326,7 @@ def command_info(username):
     print
     display_status()
 
-def command_merge():
+def command_merge(repo_name, comment = None):
     """Merges changes from the local pull request branch into master and deletes
     the pull request branch"""
 
@@ -333,6 +349,10 @@ def command_merge():
     ret = os.system('git branch -D %s' % branch_name)
     if ret != 0:
         raise UserWarning("Could not delete branch")
+
+    if options['merge-auto-close']:
+        print color_text("Closing pull request", 'status')
+        close_pull_request(repo_name, pull_request_ID, comment)
 
     print
     print color_text("Merge completed", 'success')
@@ -720,7 +740,10 @@ def main():
         elif args[0] == 'info':
             command_info(username)
         elif args[0] == 'merge':
-            command_merge()
+            if len(args) >= 2:
+                command_merge(repo_name, args[1])
+            else:
+                command_merge(repo_name)
         elif args[0] == 'open':
             if len(args) >= 2:
                 command_open(repo_name, args[1])
