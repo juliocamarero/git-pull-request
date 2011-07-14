@@ -34,7 +34,7 @@ Commands:
         Closes the current pull request on github and deletes the pull request
         branch.
 
-    continue-update, cup
+    continue-update, cu
         Continues the current update after conflicts have been fixed.
 
     fetch <pull request ID>
@@ -137,7 +137,7 @@ options = {
     # Sets the method to use when updating pull request branches with changes
     # in master.
     # Possible options: 'merge', 'rebase'
-    'update-method': 'rebase',
+    'update-method': 'merge',
 
     # Determines whether to open newly submitted pull requests on github
     'submit-open-github': True,
@@ -729,7 +729,7 @@ def main():
                 command_close(repo_name, args[1])
             else:
                 command_close(repo_name)
-        elif args[0] in ('continue-update', 'cup'):
+        elif args[0] in ('continue-update', 'cu'):
             command_continue_update()
         elif args[0] == 'fetch':
             command_fetch(repo_name, args[1], fetch_auto_update)
