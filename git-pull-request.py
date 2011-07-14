@@ -187,6 +187,16 @@ def chdir(dir):
     f.write(dir)
     f.close()
 
+def close_pull_request(repo_name, pull_request_ID, comment = None):
+    if comment is None:
+        comment = options['close-default-comment']
+
+    if comment is not None and comment != '':
+        post_comment(repo_name, pull_request_ID, comment)
+
+    url = "http://github.com/api/v2/json/issues/close/%s/%s" % (repo_name, pull_request_ID)
+    github_json_request(url)
+
 def color_text(text, token, bold = False):
     """Return the given text in ANSI colors"""
 
@@ -260,21 +270,6 @@ def command_close(repo_name, comment = None):
     print color_text("Pull request closed", 'success')
     print
     display_status()
-
-def post_comment(repo_name, pull_request_ID, comment):
-    url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
-    params = {'comment': comment}
-    github_json_request(url, params)
-
-def close_pull_request(repo_name, pull_request_ID, comment = None):
-    if comment is None:
-        comment = options['close-default-comment']
-
-    if comment is not None and comment != '':
-        post_comment(repo_name, pull_request_ID, comment)
-
-    url = "http://github.com/api/v2/json/issues/close/%s/%s" % (repo_name, pull_request_ID)
-    github_json_request(url)
 
 def command_continue_update():
     print color_text("Continuing update from master", 'status')
@@ -774,6 +769,11 @@ def main():
 
 def open_URL(url):
     os.system('open "%s"' % url)
+
+def post_comment(repo_name, pull_request_ID, comment):
+    url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
+    params = {'comment': comment}
+    github_json_request(url, params)
 
 def update_branch(branch_name):
     if in_work_dir():
