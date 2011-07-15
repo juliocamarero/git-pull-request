@@ -114,7 +114,7 @@ options = {
     'color-display-title-number': 'magenta',
     'color-display-title-text': 'red',
     'color-display-title-user': 'blue',
-    'color-display-info-repo-title': 'black',
+    'color-display-info-repo-title': 'default',
     'color-display-info-repo-count': 'magenta',
     'color-display-info-total-title': 'green',
     'color-display-info-total-count': 'magenta',
@@ -204,13 +204,13 @@ def color_text(text, token, bold = False):
 
     color_name = options["color-%s" % token]
 
+    if color_name == 'default' or not sys.stdout.isatty():
+        return text
+
     colors = (
         'black', 'red', 'green', 'yellow',
         'blue', 'magenta', 'cyan', 'white'
     )
-
-    if not sys.stdout.isatty():
-        return text
 
     if color_name in colors:
         return u"\033[{0};{1}m{2}\033[0m".format(
