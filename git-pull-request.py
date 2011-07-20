@@ -14,13 +14,13 @@ Options:
 
     -r <repo>, --repo <repo>
         Use this github repo instead of the 'remote origin' or 'github.repo'
-        git config setting. This can be used to specify either a remote name
-        or the full reposity name (user/repo).
+        git config setting. This can be either a remote name or a full
+        reposity name (user/repo).
 
-    -u <reviewer repo>, --reviewer <reviewer repo>
+    -u <reviewer>, --reviewer <reviewer>
         Send pull requests to this github repo instead of the 'remote upstream'
-        or 'github.reviewer' git config setting. This must be the full
-        repository name (user/repo).
+        or 'github.reviewer' git config setting. This can be either a username
+        or a full repository name (user/repo).
 
 Commands:
 
@@ -398,6 +398,9 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
     if reviewer_repo_name is None or reviewer_repo_name == '':
         raise UserWarning("Could not determine a repo to submit this pull request to")
 
+    if '/' not in reviewer_repo_name:
+        reviewer_repo_name = repo_name.replace(username, reviewer_repo_name)
+
     print color_text("Pushing local branch %s to origin" % branch_name, 'status')
 
     ret = os.system('git push origin %s' % branch_name)
@@ -710,7 +713,7 @@ def main():
         elif o == '--no-update':
             fetch_auto_update = False
 
-    # get repo name from git config:
+    # get repo name from git config
     if repo_name is None or repo_name == '':
         repo_name = get_default_repo_name()
 
