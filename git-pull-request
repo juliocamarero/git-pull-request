@@ -183,13 +183,13 @@ def submit(repo, pull_body='', pull_title=''):
     if (pull_to == None or pull_to == ''):
         raise UserWarning("Could not determine a repo to submit this pull request to")
 
-    branch_name = get_current_branch()[0]
+    branch_name = os.popen("git rev-parse --abbrev-ref HEAD").read().strip()
     ret = os.system('git push origin %s' % branch_name)
     
     if ret != 0:
         raise UserWarning("Could not push this branch to your origin")
 
-    url = "http://github.com/api/v2/json/pulls/%s/liferay-portal" % pull_to
+    url = "http://github.com/api/v2/json/pulls/%s" % repo.replace(username, reviewer)
 
     # pull[base] - A String of the branch or commit SHA that you want your changes to be pulled to.
     # pull[head] - A String of the branch or commit SHA of your changes. Typically this will be a branch. If the branch is in a fork of the original repository, specify the username first: "my-user:some-branch".
@@ -256,9 +256,9 @@ def open(repo, pullreq=None):
     if pullreq == None:
         branch, pullreq = get_current_branch()
 
-    repo_url, pr = get_pull_request_info(repo, pullreq)
+    pr = get_pull_request_info(repo, pullreq)
 
-    os.system('open %s' % (pr.get('html_url')))
+    os.system('open %s' % pr.get('html_url'))
 
 def show(repo):
     """List open pull requests
@@ -328,7 +328,10 @@ def fetch_req(repo, pullreq, displayInfo=True):
     }
 
     ret = os.system('git fetch %s %s:%s' % (repo_url, remote_branch_name, branch_name))
-    if ret != 0:
+
+    branch_ret = os.system('git show-ref --verify refs/heads/%s' % branch_name)
+
+    if ret != 0 and branch_ret != 0:
         raise UserWarning("Fetch failed")
 
     print
@@ -349,6 +352,7 @@ def update(repo):
 
     pr = get_pull_request_info(repo, pullreq)
     branch_name = get_branch_name(pr)
+
     repo_url = pr['head']['repository']['url'].replace('https', 'git')
     private_repo = pr['head']['repository']['private']
 
@@ -400,6 +404,7 @@ def get_pull_request_info(repo, pullreq='', displayInfo=True):
         raise UserWarning("Failed to speak with github")
 
     data = json.loads(data)
+    # print json.dumps(data, sort_keys=True, indent=4)
 
     if pullreq:
         pr = data['pull']
@@ -470,15 +475,14 @@ def info():
 
 def get_branch_name(pr):
     ref = pr['head']['ref']
-
     request_id = pr['number']
 
-    m = re.search("^([A-Z]{3,}-\d+)", ref)
+    ticket_id = extract_ticket_id(ref)
 
     branch_name  = 'pull-request-%s' % request_id
 
-    if(m != None and m.group(1) != ''):
-        branch_name = '%s-%s' % (branch_name, m.group(1))
+    if(ticket_id != ''):
+        branch_name = '%s-%s' % (branch_name, ticket_id)
 
     return branch_name
 
