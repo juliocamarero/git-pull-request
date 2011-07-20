@@ -17,10 +17,9 @@ Options:
         git config setting. This can be used to specify either a remote name
         or the full reposity name (user/repo).
 
-    -u <reviewer repo>, --reviewer <reviewer repo>
-        Send pull requests to this github repo instead of the 'remote upstream'
-        or 'github.reviewer' git config setting. This must be the full
-        repository name (user/repo).
+    -u <reviewer>, --reviewer <reviewer>
+        Send pull requests to this github repo instead of the 'github.reviewer'
+        git config setting. The respository is assumed to be the current repo.
 
 Commands:
 
@@ -384,7 +383,7 @@ def command_show(repo_name):
 
     display_status()
 
-def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = None, pull_title = None):
+def command_submit(repo_name, username, reviewer_name = None, pull_body = None, pull_title = None):
     """Push the current branch and create a pull request to your github reviewer
     (or upstream)"""
 
@@ -392,10 +391,10 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 
     print color_text("Submitting pull request for %s" % branch_name, 'status')
 
-    if reviewer_repo_name is None or reviewer_repo_name == '':
-        reviewer_repo_name = get_repo_name_for_remote('upstream')
+    if reviewer_name is None or reviewer_name == '':
+        reviewer_name = get_repo_name_for_remote('upstream')
 
-    if reviewer_repo_name is None or reviewer_repo_name == '':
+    if reviewer_name is None or reviewer_name == '':
         raise UserWarning("Could not determine a repo to submit this pull request to")
 
     print color_text("Pushing local branch %s to origin" % branch_name, 'status')
@@ -404,7 +403,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
     if ret != 0:
         raise UserWarning("Could not push this branch to your origin")
 
-    url = "http://github.com/api/v2/json/pulls/%s" % reviewer_repo_name
+    url = "http://github.com/api/v2/json/pulls/%s" % repo_name.replace(username, reviewer_name)
 
     # pull[base] - A String of the branch or commit SHA that you want your changes to be pulled to.
     # pull[head] - A String of the branch or commit SHA of your changes. Typically this will be a branch. If the branch is in a fork of the original repository, specify the username first: "my-user:some-branch".
@@ -424,7 +423,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
         'pull[body]': pull_body
     }
 
-    print color_text("Sending pull request to %s" % reviewer_repo_name, 'status')
+    print color_text("Sending pull request to %s" % reviewer_name, 'status')
 
     data = github_json_request(url, params)
 
@@ -677,7 +676,7 @@ def main():
     global auth_string
 
     repo_name = None
-    reviewer_repo_name = None
+    reviewer_name = None
 
     username = os.popen('git config github.user').read().strip()
 
@@ -704,7 +703,7 @@ def main():
             else:
               repo_name = get_repo_name_for_remote(a)
         elif o in ('-u', '--reviewer'):
-            reviewer_repo_name = a
+            reviewer_name = a
         elif o == '--update':
             fetch_auto_update = True
         elif o == '--no-update':
@@ -714,8 +713,8 @@ def main():
     if repo_name is None or repo_name == '':
         repo_name = get_default_repo_name()
 
-    if reviewer_repo_name is None or reviewer_repo_name == '':
-        reviewer_repo_name = os.popen('git config github.reviewer-repo').read().strip()
+    if reviewer_name is None or reviewer_name == '':
+        reviewer_name = os.popen('git config github.reviewer').read().strip()
 
     # process arguments
     if len(args) > 0:
@@ -756,7 +755,7 @@ def main():
             if len(args) >= 3:
                 pull_title = args[2]
 
-            command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title)
+            command_submit(repo_name, username, reviewer_name, pull_body, pull_title)
         elif args[0] == 'update':
             if len(args) >= 2:
                     command_update(repo_name, args[1])
