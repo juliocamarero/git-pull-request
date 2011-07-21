@@ -718,7 +718,7 @@ def main():
         repo_name = get_default_repo_name()
 
     if reviewer_repo_name is None or reviewer_repo_name == '':
-        reviewer_repo_name = os.popen('git config github.reviewer-repo').read().strip()
+        reviewer_repo_name = os.popen('git config github.reviewer').read().strip()
 
     # process arguments
     if len(args) > 0:
