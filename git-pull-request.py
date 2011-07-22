@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Automate many common tasks involving pull requests.
+Git command to automate many common tasks involving pull requests.
 
 Usage:
 
