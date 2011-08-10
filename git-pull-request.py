@@ -701,8 +701,27 @@ def main():
 
     username = os.popen('git config github.user').read().strip()
 
+    input_github_data = False
+
+    if len(username) == 0:
+        if not input_github_data:
+            print color_text("https://github.com/account/admin", 'error')
+            input_github_data = True
+
+        username = raw_input("github.user: ").strip()
+        os.popen('git config github.user %s' % (username))
+
     auth_user = "%s/token" % username
     auth_token = os.popen('git config github.token').read().strip()
+
+    if len(auth_token) == 0:
+        if not input_github_data:
+            print color_text("https://github.com/account/admin", 'error')
+            input_github_data = True
+
+        auth_token = raw_input("github.token: ").strip()
+        os.popen('git config github.token %s' % (auth_token))
+
     auth_string = base64.encodestring('%s:%s' % (auth_user, auth_token)).replace('\n', '')
 
     fetch_auto_update = options['fetch-auto-update']
