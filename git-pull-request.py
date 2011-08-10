@@ -414,11 +414,11 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
     # pull[title] - The String title of the Pull Request (and the related Issue).
     # pull[body] - The String body of the Pull Request.
 
-    if pull_body == None:
-        pull_body = ''
-
     if pull_title == None or pull_title == '':
         pull_title = build_pull_request_title(branch_name)
+
+    if pull_body == None:
+        pull_body = raw_input("Comment: ").strip()
 
     params = {
         'pull[base]': 'master',
