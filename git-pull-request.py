@@ -675,6 +675,23 @@ def load_options():
         options[k[0]] = value
 
 def main():
+    # parse command line options
+    try:
+        opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:', ['help', 'repo=', 'reviewer=', 'update', 'no-update'])
+    except getopt.GetoptError, e:
+        raise UserWarning("%s\nFor help use --help" % e)
+
+    # check for help
+    for o, a in opts:
+        if o in ('-h', '--help'):
+            command_help()
+            sys.exit(0)
+
+    if len(args) > 0 and args[0] == 'help':
+        command_help()
+        sys.exit(0)
+
+    # load git options
     load_options()
 
     global auth_string
@@ -688,20 +705,11 @@ def main():
     auth_token = os.popen('git config github.token').read().strip()
     auth_string = base64.encodestring('%s:%s' % (auth_user, auth_token)).replace('\n', '')
 
-    # parse command line options
-    try:
-        opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:', ['help', 'repo=', 'reviewer=', 'update', 'no-update'])
-    except getopt.GetoptError, e:
-        raise UserWarning("%s\nFor help use --help" % e)
-
     fetch_auto_update = options['fetch-auto-update']
 
     # process options
     for o, a in opts:
-        if o in ('-h', '--help'):
-            command_help()
-            sys.exit(0)
-        elif o in ('-r', '--repo'):
+        if o in ('-r', '--repo'):
             if re.search('/', a):
               repo_name = a
             else:
@@ -733,8 +741,6 @@ def main():
             command_fetch(repo_name, args[1], fetch_auto_update)
         elif args[0] == 'fetch-all':
             command_fetch_all(repo_name)
-        elif args[0] == 'help':
-            command_help()
         elif args[0] == 'info':
             command_info(username)
         elif args[0] == 'merge':
