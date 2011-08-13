@@ -172,7 +172,7 @@ def build_branch_name(pull_request):
     return branch_name
 
 def build_pull_request_title(branch_name):
-    """Returns the default title to use for a pull request for the branch wth
+    """Returns the default title to use for a pull request for the branch with
     the name"""
 
     m = re.search("([A-Z]{3,}-\d+)", branch_name)
