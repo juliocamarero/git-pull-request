@@ -549,6 +549,10 @@ def fetch_pull_request(pull_request):
     remote_branch_name = pull_request['head']['ref']
 
     ret = os.system('git fetch %s %s:%s' % (repo_url, remote_branch_name, branch_name))
+
+    if ret != 0:
+        ret = os.system('git show-ref --verify refs/heads/%s' % branch_name)
+
     if ret != 0:
         raise UserWarning("Fetch failed")
 
@@ -686,17 +690,21 @@ def main():
 
     # parse command line options
     try:
-        opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:', ['help', 'repo=', 'reviewer=', 'update', 'no-update'])
+        opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:l:', ['help', 'repo=', 'reviewer=', 'update', 'no-update', 'user='])
     except getopt.GetoptError, e:
         raise UserWarning("%s\nFor help use --help" % e)
 
     fetch_auto_update = options['fetch-auto-update']
+
+    info_user = username
 
     # process options
     for o, a in opts:
         if o in ('-h', '--help'):
             command_help()
             sys.exit(0)
+        elif o in ('-l', '--user'):
+            info_user = a
         elif o in ('-r', '--repo'):
             if re.search('/', a):
               repo_name = a
@@ -732,7 +740,7 @@ def main():
         elif args[0] == 'help':
             command_help()
         elif args[0] == 'info':
-            command_info(username)
+            command_info(info_user)
         elif args[0] == 'merge':
             if len(args) >= 2:
                 command_merge(repo_name, args[1])
