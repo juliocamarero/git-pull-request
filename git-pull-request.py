@@ -15,7 +15,7 @@ Options:
 	-r <repo>, --repo <repo>
 		Use this github repo instead of the 'remote origin' or 'github.repo'
 		git config setting. This can be either a remote name or a full
-		reposity name (user/repo).
+		repository name (user/repo).
 
 	-u <reviewer>, --reviewer <reviewer>
 		Send pull requests to this github repo instead of the 'remote upstream'
