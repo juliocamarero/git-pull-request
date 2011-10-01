@@ -100,6 +100,8 @@ import re
 import sys
 import urllib
 import urllib2
+# import isodate
+# from datetime import date
 
 from textwrap import fill
 
@@ -301,7 +303,7 @@ def command_info(username):
     url = "http://github.com/api/v2/json/repos/show/%s" % username
     data = github_json_request(url)
     repos = data['repositories']
-
+    # print json.dumps(data,sort_keys=True, indent=4)
     total = 0
     issue_list = {}
     for pull_request_info in repos:
@@ -382,6 +384,37 @@ def command_show(repo_name):
         display_pull_request(pull_request)
 
     display_status()
+
+def get_pr_stats(repo_name, pull_request_ID):
+    if pull_request_ID != None:
+        is_int = False
+        try:
+            pull_request_ID = int(pull_request_ID)
+            pull_request = get_pull_request(repo_name, pull_request_ID)
+        except Exception, e:
+            pull_request = pull_request_ID
+
+        display_pull_request_minimal(pull_request)
+
+        branch_name = build_branch_name(pull_request)
+        ret = os.system('git show-ref --verify -q refs/heads/%s' % branch_name)
+
+        if ret != 0:
+            branch_name = fetch_pull_request(pull_request)
+
+            ret = os.system('git show-ref --verify -q refs/heads/%s' % branch_name)
+
+            if  ret != 0:
+                raise UserWarning("Fetch failed")
+
+        merge_base = os.popen('git merge-base master %s' % branch_name).read().strip()
+        ret = os.system('git diff --shortstat %s..%s' % (merge_base, branch_name))
+        print
+    else:
+        pull_requests = get_pull_requests(repo_name)
+
+        for pull_request in pull_requests:
+            get_pr_stats(repo_name, pull_request)
 
 def command_submit(repo_name, username, reviewer_name = None, pull_body = None, pull_title = None):
     """Push the current branch and create a pull request to your github reviewer
@@ -523,8 +556,13 @@ def display_pull_request(pull_request):
     display_pull_request_minimal(pull_request)
     print "    %s" % color_text(pull_request.get('html_url'), 'display-title-url')
 
+    # print json.dumps(pull_request,sort_keys=True, indent=4)
     if pull_request.get('body').strip():
         print fill(pull_request.get('body'), initial_indent="    ", subsequent_indent="    ", width=80)
+
+    # print "   Created: %s" % date.strftime(isodate.parse_datetime( pull_request.get('issue_created_at')), "%B %d, %Y at %I:%M %p")
+    # print "   Created: %s" % pull_request.get('issue_created_at')
+    # print isodate.parse_datetime( pull_request.get('issue_created_at'), "%Y-%m-%dT%H:%M:%S" )
 
     print
 
@@ -650,7 +688,7 @@ def github_json_request(url, params = None):
         raise UserWarning("Invalid response from github")
 
     data = json.loads(data)
-
+    # print json.dumps(data,sort_keys=True, indent=4)
     return data
 
 def in_work_dir():
@@ -769,13 +807,20 @@ def main():
                     command_update(repo_name, args[1])
             else:
                 command_update(repo_name)
+        elif args[0] == 'stat':
+            pull_request_ID = None
+
+            if len(args) >= 2:
+                pull_request_ID = args[1]
+
+            get_pr_stats(repo_name, pull_request_ID)
         else:
             command_fetch(repo_name, args[0], fetch_auto_update)
     else:
         command_show(repo_name)
 
 def open_URL(url):
-    os.system('open "%s"' % url)
+    os.system('open -g "%s"' % url)
 
 def post_comment(repo_name, pull_request_ID, comment):
     url = "http://github.com/api/v2/json/issues/comment/%s/%s" % (repo_name, pull_request_ID)
