@@ -807,6 +807,16 @@ def update_branch(branch_name):
 		else:
 			raise UserWarning("Could not checkout %s, update not performed" % branch_name)
 
+	parent_commit = os.popen('git merge-base master %s' % branch_name).read().strip()
+	head_commit = os.popen('git rev-parse HEAD').read().strip()
+
+	if parent_commit == head_commit:
+		branch_treeish = head_commit[0:10]
+	else:
+		branch_treeish = '%s..%s' % (parent_commit[0:10], head_commit[0:10])
+
+	print color_text("Branch treeish: %s" % branch_treeish, 'status')
+
 	if options['update-method'] == 'merge':
 		ret = os.system('git merge master')
 	elif options['update-method'] == 'rebase':
