@@ -64,7 +64,8 @@ Commands:
 		pull request branch.
 
 	submit [<pull body>] [<pull title>]
-		Sends a pull request to the user's reviewer on github.
+		Pushes a branch and sends a pull request to the user's reviewer on
+		github.
 
 	update [<pull request ID or branch name>]
 		Updates the current pull request or the specified request with the local
@@ -190,6 +191,18 @@ def chdir(dir):
 def close_pull_request(repo_name, pull_request_ID, comment = None):
 	if comment is None:
 		comment = options['close-default-comment']
+
+	try:
+		f = open('/tmp/git-pull-request-treeish-%s' % pull_request_ID, 'rb')
+		branch_treeish = f.read()
+		f.close()
+
+		if comment is None:
+			comment = ''
+
+		comment += "\n\nOriginal commits: %s" % branch_treeish
+	except IOError:
+		pass
 
 	if comment is not None and comment != '':
 		post_comment(repo_name, pull_request_ID, comment)
@@ -555,6 +568,11 @@ def fetch_pull_request(pull_request):
 	if ret != 0:
 		raise UserWarning("Fetch failed")
 
+	try:
+		os.remove('/tmp/git-pull-request-treeish-%s' % pull_request['number'])
+	except OSError:
+		pass
+
 	return branch_name
 
 def get_current_branch_name(ensure_pull_request = True):
@@ -815,7 +833,12 @@ def update_branch(branch_name):
 	else:
 		branch_treeish = '%s..%s' % (parent_commit[0:10], head_commit[0:10])
 
-	print color_text("Branch treeish: %s" % branch_treeish, 'status')
+	pull_request_ID = get_pull_request_ID(branch_name)
+	f = open('/tmp/git-pull-request-treeish-%s' % pull_request_ID, 'wb')
+	f.write(branch_treeish)
+	f.close()
+
+	print color_text("Original commits: %s" % branch_treeish, 'status')
 
 	if options['update-method'] == 'merge':
 		ret = os.system('git merge master')
