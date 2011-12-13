@@ -408,7 +408,7 @@ def get_pr_stats(repo_name, pull_request_ID):
 				raise UserWarning("Fetch failed")
 
 		merge_base = os.popen('git merge-base master %s' % branch_name).read().strip()
-		ret = os.system('git diff --shortstat %s..%s' % (merge_base, branch_name))
+		ret = os.system("git --no-pager diff --shortstat {0}..{1} && git diff --numstat --pretty='%H' --no-renames {0}..{1} | xargs -0n1 echo -n | awk '{{print $3}}' | sed -e 's/^.*\.\(.*\)$/\\1/' | sort | uniq -c | tr '\n' ',' | sed 's/,$//'".format(merge_base, branch_name))
 		print
 	else:
 		pull_requests = get_pull_requests(repo_name)
@@ -416,7 +416,7 @@ def get_pr_stats(repo_name, pull_request_ID):
 		for pull_request in pull_requests:
 			get_pr_stats(repo_name, pull_request)
 
-def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = None, pull_title = None):
+def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = None, pull_title = None, submitOpenGitHub = True):
 	"""Push the current branch and create a pull request to your github reviewer
 	(or upstream)"""
 
@@ -436,6 +436,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 	print color_text("Pushing local branch %s to origin" % branch_name, 'status')
 
 	ret = os.system('git push origin %s' % branch_name)
+
 	if ret != 0:
 		raise UserWarning("Could not push this branch to your origin")
 
@@ -450,7 +451,8 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 		pull_title = build_pull_request_title(branch_name)
 
 	if pull_body == None:
-		pull_body = raw_input("Comment: ").strip()
+		pull_body = ''
+		# pull_body = raw_input("Comment: ").strip()
 
 	params = {
 		'pull[base]': 'master',
@@ -473,7 +475,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 	print
 	display_status()
 
-	if options['submit-open-github']:
+	if submitOpenGitHub:
 		open_URL(pull_request.get('html_url'))
 
 def command_update(repo_name, target = None):
@@ -680,6 +682,7 @@ def github_json_request(url, params = None):
 		req = urllib2.Request(url)
 
 	authorize_request(req)
+	print url
 
 	try:
 		response = urllib2.urlopen(req)
@@ -718,7 +721,7 @@ def load_options():
 def main():
 	# parse command line options
 	try:
-		opts, args = getopt.gnu_getopt(sys.argv[1:], 'hr:u:l:', ['help', 'repo=', 'reviewer=', 'update', 'no-update', 'user='])
+		opts, args = getopt.gnu_getopt(sys.argv[1:], 'hqr:u:l:', ['help', 'quiet', 'repo=', 'reviewer=', 'update', 'no-update', 'user='])
 	except getopt.GetoptError, e:
 		raise UserWarning("%s\nFor help use --help" % e)
 
@@ -752,6 +755,7 @@ def main():
 	fetch_auto_update = options['fetch-auto-update']
 
 	info_user = username
+	submitOpenGitHub = options['submit-open-github']
 
 	# process options
 	for o, a in opts:
@@ -760,6 +764,8 @@ def main():
 			sys.exit(0)
 		elif o in ('-l', '--user'):
 			info_user = a
+		elif o in ('-q', '--quiet'):
+			submitOpenGitHub = False
 		elif o in ('-r', '--repo'):
 			if re.search('/', a):
 				repo_name = a
@@ -818,7 +824,7 @@ def main():
 			if len(args) >= 3:
 				pull_title = args[2]
 
-			command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title)
+			command_submit(repo_name, username, reviewer_repo_name, pull_body, pull_title, submitOpenGitHub)
 		elif args[0] == 'update':
 			if len(args) >= 2:
 					command_update(repo_name, args[1])
